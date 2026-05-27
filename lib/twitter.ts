@@ -24,7 +24,8 @@ export async function fetchLatestTweets(params: {
   maxResults?: number;
 }): Promise<TweetInput[]> {
   if (!env.TWITTER_BEARER_TOKEN) {
-    throw new Error("TWITTER_BEARER_TOKEN is required");
+    // No token yet — skip silently instead of crashing the pipeline
+    return [];
   }
 
   const user = await fetchTwitterUser(params.username);
