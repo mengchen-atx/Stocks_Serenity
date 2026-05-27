@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum PushChannel {
+  WECHAT_WORK_BOT
+  SERVER_CHAN
+  WECHAT_TEMPLATE
+  TELEGRAM
+  EMAIL
+  WXPUSHER
+}
+
+enum PushStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  UNPAID
+  INCOMPLETE
+}
+
+// ─── Auth (NextAuth compatible) ───────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Users & Subscriptions ────────────────────────────────────────────────────
+
+model User {
+  id                 String           @id @default(cuid())
+  name               String?
+  email              String           @unique
+  emailVerified      DateTime?
+  image              String?
+  stripeCustomerId   String?          @unique
+  subscriptionTier   SubscriptionTier @default(FREE)
+  telegramChatId     String?
+  notifyWechat       Boolean          @default(false)
+  notifyTelegram     Boolean          @default(false)
+  notifyEmail        Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String
+  stripeSubscriptionId String             @unique
+  stripePriceId        String
+  stripeCurrentPeriodEnd DateTime
+  status               SubscriptionStatus @default(ACTIVE)
+  tier                 SubscriptionTier   @default(FREE)
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─── Content ──────────────────────────────────────────────────────────────────
+
+model WatchUser {
+  id              String   @id @default(cuid())
+  username        String   @unique
+  displayName     String?
+  enabled         Boolean  @default(true)
+  includeReplies  Boolean  @default(false)
+  includeRetweets Boolean  @default(false)
+  lastTweetId     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  tweets          Tweet[]
+}
+
+model Tweet {
+  id                String       @id @default(cuid())
+  tweetId           String       @unique
+  authorUsername    String
+  content           String
+  contentHash       String       @unique
+  sourceUrl         String?
+  tweetCreatedAt    DateTime
+  translatedContent String?
+  aiAnalysis        Json?
+  pushed            Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  watchUserId       String?
+  watchUser         WatchUser?   @relation(fields: [watchUserId], references: [id])
+  stockMentions     StockMention[]
+  pushLogs          PushLog[]
+
+  @@index([authorUsername, tweetCreatedAt])
+  @@index([pushed])
+  @@index([tweetCreatedAt])
+}
+
+model Stock {
+  id                 String         @id @default(cuid())
+  ticker             String         @unique
+  companyName        String?
+  exchange           String?
+  currency           String?
+  price              Float?
+  marketCap          BigInt?
+  marketCapDisplay   String?
+  companyDescription String?
+  industry           String?
+  themes             String[]       @default([])
+  lastFetchedAt      DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  mentions           StockMention[]
+}
+
+model StockMention {
+  id         String   @id @default(cuid())
+  tweetId    String
+  stockId    String
+  stance     String
+  reason     String
+  confidence Int?
+  createdAt  DateTime @default(now())
+  tweet      Tweet    @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+  stock      Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([tweetId, stockId, stance])
+  @@index([stance])
+  @@index([stockId, stance])
+}
+
+model PushLog {
+  id             String      @id @default(cuid())
+  tweetId        String
+  channel        PushChannel
+  status         PushStatus
+  payloadHash    String
+  responseStatus Int?
+  responseBody   String?
+  error          String?
+  createdAt      DateTime    @default(now())
+  tweet          Tweet       @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+
+  @@unique([tweetId, channel, payloadHash])
+  @@index([status, createdAt])
+}
+
+model CronRun {
+  id         String    @id @default(cuid())
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     String
+  fetched    Int       @default(0)
+  analyzed   Int       @default(0)
+  pushed     Int       @default(0)
+  skipped    Int       @default(0)
+  error      String?
+}
