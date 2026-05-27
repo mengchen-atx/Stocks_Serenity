@@ -1,10 +1,4 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron",
-      "schedule": "*/10 * * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/api/webhooks/(.*)",
