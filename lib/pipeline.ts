@@ -218,6 +218,7 @@ function buildChannelPayload(
         sourceUrl: params.tweet.sourceUrl,
         original: params.tweet.content,
         authorUsername: params.tweet.authorUsername,
+        tweetCreatedAt: params.tweet.tweetCreatedAt,
         analysis: params.analysis,
         stocks: params.stocks,
         topMentions: params.topMentions

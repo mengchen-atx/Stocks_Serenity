@@ -46,6 +46,8 @@ export type WxPusherInput = {
   sourceUrl?: string | null;
   original: string;
   authorUsername?: string;
+  /** 推文发布时间（UTC），渲染时转换为美国中部时间显示 */
+  tweetCreatedAt?: Date;
   analysis: AiAnalysis;
   stocks: StockProfile[];
   /** 近30天最热提及股票，来自 getTopMentionedStocks() */
@@ -101,11 +103,17 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
   // ── 近30天热榜 ──────────────────────────────────────────────────────────────
   const topMentionsHtml = buildTopMentionsHtml(input.topMentions);
 
+  // ── 美国中部时间（CST/CDT，America/Chicago）─────────────────────────────────
+  const cstTime = input.tweetCreatedAt
+    ? formatCST(input.tweetCreatedAt)
+    : null;
+
   return `
 <div style="font-family:-apple-system,sans-serif;max-width:600px;color:#1a1a1a;">
 
   <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:white;padding:16px;border-radius:8px 8px 0 0;">
     <div style="font-size:18px;font-weight:bold;">🚨 @${author} 最新观点</div>
+    ${cstTime ? `<div style="font-size:12px;color:#94a3b8;margin-top:4px;">🕐 ${cstTime}</div>` : ""}
   </div>
 
   <div style="padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;">
@@ -299,6 +307,28 @@ function buildTopMentionsHtml(topMentions?: TopMention[]): string {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+/**
+ * 把 UTC 时间转换为美国中部时间字符串（自动处理夏令时 CST/CDT）
+ * 输出格式：2026/05/27 14:30 CST
+ */
+function formatCST(date: Date): string {
+  // Intl 会自动处理夏令时：冬天 UTC-6 (CST)，夏天 UTC-5 (CDT)
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZoneName: "short"
+  }).formatToParts(date);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const tzName = get("timeZoneName"); // "CST" 或 "CDT"
+  return `${get("year")}/${get("month")}/${get("day")} ${get("hour")}:${get("minute")} ${tzName}`;
 }
 
 function escapeHtml(str: string): string {
