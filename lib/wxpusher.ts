@@ -16,6 +16,7 @@
 
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import type { TopMention } from "@/lib/insights";
 import type { AiAnalysis, StockProfile } from "@/types";
 
 const WXPUSHER_API = "https://wxpusher.zjiecode.com/api/send/message";
@@ -47,6 +48,8 @@ export type WxPusherInput = {
   authorUsername?: string;
   analysis: AiAnalysis;
   stocks: StockProfile[];
+  /** 近30天最热提及股票，来自 getTopMentionedStocks() */
+  topMentions?: TopMention[];
 };
 
 /**
@@ -95,6 +98,9 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
     ? `<a href="${input.sourceUrl}" style="color:#2563eb;font-size:12px;">查看原文 →</a>`
     : "";
 
+  // ── 近30天热榜 ──────────────────────────────────────────────────────────────
+  const topMentionsHtml = buildTopMentionsHtml(input.topMentions);
+
   return `
 <div style="font-family:-apple-system,sans-serif;max-width:600px;color:#1a1a1a;">
 
@@ -129,6 +135,8 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
     <div style="margin:16px 0;padding:8px 12px;background:#f0fdf4;border-radius:4px;color:#166534;font-size:13px;">
       暂无明显利空信号
     </div>`}
+
+    ${topMentionsHtml}
 
     <div style="margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <div style="font-size:12px;color:#64748b;">置信度：<span style="font-family:monospace;color:#0f172a;">${bar}</span> ${confidence}/100</div>
@@ -243,6 +251,49 @@ export async function sendWxPusherToUids(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * 渲染「近30天最热提及股票」板块
+ * 数据不足时返回空字符串（不显示该板块）
+ */
+function buildTopMentionsHtml(topMentions?: TopMention[]): string {
+  if (!topMentions || topMentions.length === 0) return "";
+
+  const rows = topMentions
+    .slice(0, 8)
+    .map((m, i) => {
+      const dominant = m.bullishCount >= m.bearishCount ? "📈" : "📉";
+      const bullishBadge = m.bullishCount > 0
+        ? `<span style="color:#166534;font-size:11px;">📈×${m.bullishCount}</span>`
+        : "";
+      const bearishBadge = m.bearishCount > 0
+        ? `<span style="color:#991b1b;font-size:11px;margin-left:4px;">📉×${m.bearishCount}</span>`
+        : "";
+      const name = m.companyName ? ` <span style="color:#64748b;font-size:11px;">${escapeHtml(m.companyName)}</span>` : "";
+      return `
+        <tr>
+          <td style="padding:5px 8px;color:#94a3b8;font-size:12px;text-align:center;">${i + 1}</td>
+          <td style="padding:5px 8px;">
+            <span style="font-family:monospace;font-weight:700;font-size:13px;">${dominant} ${m.ticker}</span>${name}
+          </td>
+          <td style="padding:5px 8px;text-align:right;white-space:nowrap;">
+            ${bullishBadge}${bearishBadge}
+          </td>
+          <td style="padding:5px 8px;text-align:right;font-weight:700;font-size:13px;color:#0f172a;">${m.totalCount}次</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <div style="margin-top:20px;padding:14px;background:#fafafa;border:1px solid #e2e8f0;border-radius:6px;">
+      <div style="font-weight:bold;font-size:13px;color:#475569;margin-bottom:10px;">
+        📊 近30天最热提及股票
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
 
 function escapeHtml(str: string): string {
   return str

@@ -19,6 +19,8 @@ import {
   renderWxPusherHtml,
   sendWxPusherTopic
 } from "@/lib/wxpusher";
+import { getTopMentionedStocks } from "@/lib/insights";
+import type { TopMention } from "@/lib/insights";
 import type { AiAnalysis, TweetInput, StockProfile } from "@/types";
 
 export type PipelineResult = {
@@ -137,13 +139,19 @@ export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
     return { analyzed: !saved.aiAnalysis, pushed: false, skipped: true };
   }
 
+  // 查询近30天热榜（仅 WxPusher 用到，其他渠道忽略）
+  const topMentions = channels.includes(PushChannel.WXPUSHER)
+    ? await getTopMentionedStocks(30, 8).catch(() => undefined)
+    : undefined;
+
   let sentOk = false;
 
   for (const channel of channels) {
     const { content, payloadHash } = buildChannelPayload(channel, {
       tweet,
       analysis,
-      stocks
+      stocks,
+      topMentions
     });
 
     const alreadySent = await prisma.pushLog.findUnique({
@@ -190,7 +198,7 @@ export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
 
 function buildChannelPayload(
   channel: PushChannel,
-  params: { tweet: TweetInput; analysis: AiAnalysis; stocks: StockProfile[] }
+  params: { tweet: TweetInput; analysis: AiAnalysis; stocks: StockProfile[]; topMentions?: TopMention[] }
 ): { content: string; payloadHash: string } {
   let content: string;
 
@@ -211,7 +219,8 @@ function buildChannelPayload(
         original: params.tweet.content,
         authorUsername: params.tweet.authorUsername,
         analysis: params.analysis,
-        stocks: params.stocks
+        stocks: params.stocks,
+        topMentions: params.topMentions
       });
       break;
     }
