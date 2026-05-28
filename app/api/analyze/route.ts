@@ -54,14 +54,20 @@ export async function POST(request: NextRequest) {
   const contentHash = sha256(`${authorUsername}:${content}`);
   const tweetId = `manual_${contentHash.slice(0, 16)}`;
 
-  const result = await handleTweet(
-    { tweetId, authorUsername, content, tweetCreatedAt: tweetDate, sourceUrl },
-    undefined // watchUserId — 手动提交不绑定 WatchUser
-  );
+  try {
+    const result = await handleTweet(
+      { tweetId, authorUsername, content, tweetCreatedAt: tweetDate, sourceUrl },
+      undefined // watchUserId — 手动提交不绑定 WatchUser
+    );
 
-  return NextResponse.json({
-    ok: true,
-    tweetId,
-    ...result
-  });
+    return NextResponse.json({
+      ok: true,
+      tweetId,
+      ...result
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[analyze] handleTweet failed:", message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
