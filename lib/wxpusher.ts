@@ -31,6 +31,13 @@ type WxPusherPayload = {
   topicIds?: number[];     // 推送给订阅该话题的所有用户
   uids?: string[];         // 推送给指定用户（付费用户的 uid）
   url?: string;            // 点击跳转链接
+  /**
+   * 验证付费状态后再推送（App 上架后使用）
+   * 0 = 不验证（所有订阅者）
+   * 1 = 只推送给付费用户
+   * 2 = 只推送给未付费用户（催付款用）
+   */
+  verifyPayType?: 0 | 1 | 2;
 };
 
 type WxPusherResponse = {
@@ -196,7 +203,8 @@ export async function sendWxPusherTopic(
     summary,
     contentType: 2, // HTML
     topicIds: [Number(env.WXPUSHER_TOPIC_ID)],
-    url: sourceUrl ?? undefined
+    url: sourceUrl ?? undefined,
+    verifyPayType: 1  // 只推送给付费用户（App 已上架）
   };
 
   try {
