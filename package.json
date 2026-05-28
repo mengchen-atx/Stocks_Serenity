@@ -15,7 +15,9 @@
     "cron:run": "DOTENV_CONFIG_PATH=.env.local tsx scripts/run-cron.ts",
     "test:push": "DOTENV_CONFIG_PATH=.env.local tsx scripts/test-push.ts",
     "test:push:format": "DOTENV_CONFIG_PATH=.env.local tsx scripts/test-push.ts --format",
-    "test:push:real": "DOTENV_CONFIG_PATH=.env.local tsx scripts/test-push.ts --real"
+    "test:push:real": "DOTENV_CONFIG_PATH=.env.local tsx scripts/test-push.ts --real",
+    "backfill": "DOTENV_CONFIG_PATH=.env.local tsx scripts/backfill-yesterday.ts",
+    "push:pending": "DOTENV_CONFIG_PATH=.env.local tsx scripts/push-pending.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

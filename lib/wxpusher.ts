@@ -48,6 +48,8 @@ export type WxPusherInput = {
   authorUsername?: string;
   /** 推文发布时间（UTC），渲染时转换为美国中部时间显示 */
   tweetCreatedAt?: Date;
+  /** 推文附带图片（来自 Twitter API media expansion） */
+  imageUrls?: string[];
   analysis: AiAnalysis;
   stocks: StockProfile[];
   /** 近30天最热提及股票，来自 getTopMentionedStocks() */
@@ -121,6 +123,9 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
     <div style="margin-bottom:12px;">
       <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">原文</div>
       <div style="font-style:italic;color:#334155;font-size:14px;line-height:1.6;">"${escapeHtml(input.original)}"</div>
+      ${(input.imageUrls ?? []).map((url) =>
+        `<img src="${url}" style="margin-top:10px;width:100%;max-width:560px;border-radius:6px;display:block;" />`
+      ).join("")}
     </div>
 
     <div style="margin-bottom:12px;padding:12px;background:white;border-radius:6px;border:1px solid #e2e8f0;">

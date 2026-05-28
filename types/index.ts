@@ -4,6 +4,8 @@ export type TweetInput = {
   content: string;
   tweetCreatedAt: Date;
   sourceUrl?: string;
+  /** 推文附带的图片 URL 列表（来自 Twitter API media expansion） */
+  imageUrls?: string[];
 };
 
 export type StockSignal = {
