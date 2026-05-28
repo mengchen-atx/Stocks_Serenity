@@ -266,7 +266,7 @@ function buildTopMentionsHtml(topMentions?: TopMention[]): string {
     if (m.bearishCount > 0) lines.push({ ticker: m.ticker, company: m.companyName, stance: "bearish", count: m.bearishCount });
   }
   lines.sort((a, b) => b.count - a.count);
-  const top = lines.slice(0, 10);
+  const top = lines.slice(0, 20);
 
   const rows = top.map((line, i) => {
     const isBullish = line.stance === "bullish";
@@ -293,7 +293,7 @@ function buildTopMentionsHtml(topMentions?: TopMention[]): string {
   return `
     <div style="margin-top:20px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
       <div style="font-weight:700;font-size:13px;color:#374151;margin-bottom:10px;">
-        📊 近30天最热提及（Top ${top.length}）
+        📊 近30天最热提及（共 ${top.length} 条信号）
       </div>
       <table style="width:100%;border-collapse:collapse;">
         <tbody>${rows}</tbody>

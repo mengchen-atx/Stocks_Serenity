@@ -141,7 +141,7 @@ export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
 
   // 查询近30天热榜（仅 WxPusher 用到，其他渠道忽略）
   const topMentions = channels.includes(PushChannel.WXPUSHER)
-    ? await getTopMentionedStocks(30, 8).catch(() => undefined)
+    ? await getTopMentionedStocks(30, 20).catch(() => undefined)
     : undefined;
 
   let sentOk = false;
