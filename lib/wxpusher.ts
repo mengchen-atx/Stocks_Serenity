@@ -319,7 +319,7 @@ function buildTopMentionsHtml(topMentions?: TopMention[]): string {
  * 输出格式：2026/05/27 14:30 CST
  */
 function formatCST(date: Date): string {
-  // Intl 会自动处理夏令时：冬天 UTC-6 (CST)，夏天 UTC-5 (CDT)
+  // 时间转换用 America/Chicago（自动处理夏令时），标签统一显示 CST
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
     year: "numeric",
@@ -327,13 +327,11 @@ function formatCST(date: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
-    timeZoneName: "short"
+    hour12: false
   }).formatToParts(date);
 
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  const tzName = get("timeZoneName"); // "CST" 或 "CDT"
-  return `${get("year")}/${get("month")}/${get("day")} ${get("hour")}:${get("minute")} ${tzName}`;
+  return `${get("year")}/${get("month")}/${get("day")} ${get("hour")}:${get("minute")} CST`;
 }
 
 function escapeHtml(str: string): string {
