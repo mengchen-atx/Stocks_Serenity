@@ -22,6 +22,7 @@ import {
 import { getTopMentionedStocks } from "@/lib/insights";
 import type { TopMention } from "@/lib/insights";
 import type { AiAnalysis, TweetInput, StockProfile } from "@/types";
+import { sendHistoryToSubscriber } from "@/lib/history-sender";
 
 export type PipelineResult = {
   fetched: number;
@@ -65,6 +66,9 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
         });
       }
     }
+
+    // ── 安全网：处理卡住的历史发送任务（webhook 超时未完成的） ────────────────
+    await retryPendingHistoryJobs();
 
     await prisma.cronRun.update({
       where: { id: cronRun.id },
@@ -189,6 +193,7 @@ export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
 
   if (sentOk) {
     await prisma.tweet.update({ where: { id: saved.id }, data: { pushed: true } });
+
   }
 
   return { analyzed: !saved.aiAnalysis, pushed: sentOk, skipped: false };
@@ -382,4 +387,26 @@ async function logSkipped(
     create: { tweetId, channel, status: PushStatus.SKIPPED, payloadHash, error },
     update: {}
   });
+}
+
+/**
+ * 安全网：每次 cron 运行时，检查是否有 pending/running 的历史发送任务。
+ * 正常情况下 webhook 的 waitUntil 会处理完；这里是兜底，防止 Vercel 函数超时中断后任务卡死。
+ * 每次最多处理 1 个任务（避免占用 cron 时间过长）。
+ */
+async function retryPendingHistoryJobs(): Promise<void> {
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000); // 10 分钟前还没完成的
+
+  const job = await prisma.historySendJob.findFirst({
+    where: {
+      status: { in: ["pending", "running"] },
+      createdAt: { lt: staleThreshold }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+
+  if (!job) return;
+
+  logger.info({ uid: job.uid, status: job.status }, "pipeline: retrying stale history send job");
+  await sendHistoryToSubscriber(job.uid);
 }
