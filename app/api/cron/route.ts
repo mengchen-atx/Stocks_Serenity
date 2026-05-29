@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { env } from "@/lib/env";
 import { runSerenityPipeline } from "@/lib/pipeline";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 最多5分钟，处理多条推文时足够
+export const maxDuration = 300;
 
 function isAuthorized(request: NextRequest): boolean {
   if (!env.CRON_SECRET) return true;
@@ -24,8 +25,9 @@ export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const result = await runSerenityPipeline();
-  return NextResponse.json(result);
+  // 立即返回 200，后台继续处理（避免 Vercel 函数超时）
+  waitUntil(runSerenityPipeline());
+  return NextResponse.json({ ok: true, started: true });
 }
 
 // POST — called by GitHub Actions / curl / external schedulers
@@ -33,6 +35,7 @@ export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const result = await runSerenityPipeline();
-  return NextResponse.json(result);
+  // 立即返回 200，后台继续处理（避免 Vercel 函数超时）
+  waitUntil(runSerenityPipeline());
+  return NextResponse.json({ ok: true, started: true });
 }
