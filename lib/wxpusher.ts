@@ -197,38 +197,76 @@ export async function sendWxPusherTopic(
     return { ok: false, status: 400, body: "WXPUSHER_APP_TOKEN or WXPUSHER_TOPIC_ID not set" };
   }
 
-  const payload: WxPusherPayload = {
+  // ── 1. 发给话题订阅者（verifyPayType:1 只推给付费用户）────────────────────
+  const topicPayload: WxPusherPayload = {
     appToken: env.WXPUSHER_APP_TOKEN,
     content: html,
     summary,
-    contentType: 2, // HTML
+    contentType: 2,
     topicIds: [Number(env.WXPUSHER_TOPIC_ID)],
     url: sourceUrl ?? undefined,
-    verifyPayType: 1  // 只推送给付费用户（App 已上架）
+    verifyPayType: 1
   };
+
+  let topicOk = false;
+  let lastStatus = 500;
+  let lastBody = "";
 
   try {
     const res = await fetch(WXPUSHER_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(topicPayload)
     });
-
-    const body = await res.text();
-    const json = JSON.parse(body) as WxPusherResponse;
-
-    if (!json.success) {
-      logger.warn({ code: json.code, msg: json.msg }, "WxPusher API error");
-      return { ok: false, status: res.status, body };
+    lastStatus = res.status;
+    lastBody = await res.text();
+    const json = JSON.parse(lastBody) as WxPusherResponse;
+    if (json.success) {
+      topicOk = true;
+      logger.info({ sent: json.data?.length ?? 0 }, "WxPusher pushed");
+    } else {
+      logger.warn({ code: json.code, msg: json.msg }, "WxPusher topic error");
     }
-
-    logger.info({ sent: json.data?.length ?? 0 }, "WxPusher pushed");
-    return { ok: true, status: res.status, body };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err: msg }, "WxPusher send failed");
-    return { ok: false, status: 500, body: msg };
+    logger.error({ err: msg }, "WxPusher topic send failed");
+    lastBody = msg;
   }
+
+  // ── 2. 单独发给 owner UID（不校验付费，管理员始终收到）──────────────────────
+  if (env.WXPUSHER_OWNER_UID) {
+    const ownerPayload: WxPusherPayload = {
+      appToken: env.WXPUSHER_APP_TOKEN,
+      content: html,
+      summary,
+      contentType: 2,
+      uids: [env.WXPUSHER_OWNER_UID],
+      url: sourceUrl ?? undefined
+      // 不带 verifyPayType，默认 0（不验证付费）
+    };
+    try {
+      const res = await fetch(WXPUSHER_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ownerPayload)
+      });
+      const body = await res.text();
+      const json = JSON.parse(body) as WxPusherResponse;
+      // 打印完整响应，方便排查 UID 未收到的原因
+      console.log("[WxPusher owner] 完整响应:", JSON.stringify(json, null, 2));
+      if (json.success) {
+        logger.info({ uid: env.WXPUSHER_OWNER_UID, data: json.data }, "WxPusher owner pushed");
+      } else {
+        logger.warn({ code: json.code, msg: json.msg }, "WxPusher owner error");
+      }
+    } catch (err) {
+      logger.error({ err: err instanceof Error ? err.message : err }, "WxPusher owner send failed");
+    }
+  }
+
+  return topicOk
+    ? { ok: true, status: lastStatus, body: lastBody }
+    : { ok: false, status: lastStatus, body: lastBody };
 }
 
 /**

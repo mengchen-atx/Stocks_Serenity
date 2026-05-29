@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { checkDashboardAccess } from "@/lib/access";
+import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
 import { getTopMentionedStocks } from "@/lib/insights";
 import type { AiAnalysis } from "@/types";
@@ -30,15 +28,9 @@ export default async function DashboardPage() {
   }
 
   // ── 访问控制 ────────────────────────────────────────────────────────────────
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    redirect("/auth/signin?callbackUrl=/dashboard");
-  }
-
-  const access = await checkDashboardAccess(session.user.id);
-  if (!access.ok) {
-    // 订阅过期或未订阅 → 跳转到付费墙页面
-    redirect(`/dashboard/subscribe?reason=${access.reason}`);
+  const uid = await getSessionUid();
+  if (!uid) {
+    redirect("/auth/wxpusher");
   }
 
   const [tweets, topMentions] = await Promise.all([
@@ -69,12 +61,20 @@ export default async function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-xs text-slate-400 font-mono">
+              {uid.slice(0, 12)}…
+            </span>
             <a href="/admin" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
               手动分析
             </a>
-            <Link href="/pricing" className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700">
-              订阅
-            </Link>
+            <form action="/api/auth/wxpusher/logout" method="POST">
+              <button
+                type="submit"
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                退出
+              </button>
+            </form>
           </div>
         </div>
       </header>

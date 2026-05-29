@@ -217,3 +217,27 @@ model CronRun {
   skipped    Int       @default(0)
   error      String?
 }
+
+// WxPusher UID 登录验证码（10分钟有效）
+model WxPusherOtp {
+  id        String   @id @default(cuid())
+  uid       String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([uid, used])
+}
+
+// 新用户订阅后，需要补发历史推文的队列
+model HistorySendJob {
+  id        String    @id @default(cuid())
+  uid       String    @unique              // WxPusher UID
+  status    String    @default("pending")  // pending | done | failed
+  total     Int       @default(0)         // 需要发送的总条数
+  sent      Int       @default(0)         // 已发送条数
+  createdAt DateTime  @default(now())
+  doneAt    DateTime?
+  error     String?
+}

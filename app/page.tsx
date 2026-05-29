@@ -20,7 +20,7 @@ export default function LandingPage() {
               Dashboard
             </Link>
             <Link
-              href="/auth/signin"
+              href="/auth/wxpusher"
               className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500 transition-colors"
             >
               立即开始
@@ -59,7 +59,7 @@ export default function LandingPage() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/auth/signin"
+              href="/auth/wxpusher"
               className="rounded-lg bg-teal-600 px-8 py-4 text-base font-semibold text-white hover:bg-teal-500 transition-colors shadow-lg shadow-teal-900/40"
             >
               免费开始 →

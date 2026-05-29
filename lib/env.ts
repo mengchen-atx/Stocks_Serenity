@@ -32,8 +32,9 @@ const envSchema = z.object({
   TELEGRAM_CHANNEL_ID: z.string().optional(),
 
   // ─── WxPusher（个人微信推送，付费订阅产品首选）────────────────────────────
-  WXPUSHER_APP_TOKEN: z.string().optional(),  // 应用 Token
-  WXPUSHER_TOPIC_ID: z.string().optional(),   // 话题 ID（群发）
+  WXPUSHER_APP_TOKEN: z.string().optional(),   // 应用 Token
+  WXPUSHER_TOPIC_ID: z.string().optional(),    // 话题 ID（群发）
+  WXPUSHER_OWNER_UID: z.string().optional(),   // 管理员自己的 UID，不受付费验证限制
 
   // ─── Email (Resend) ──────────────────────────────────────────────────────────
   RESEND_API_KEY: z.string().optional(),
@@ -53,6 +54,10 @@ const envSchema = z.object({
   STRIPE_PRICE_PRO: z.string().optional(),
   STRIPE_PRICE_PREMIUM: z.string().optional(),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+
+  // ─── Notion ──────────────────────────────────────────────────────────────────
+  NOTION_API_KEY: z.string().optional(),
+  NOTION_DATABASE_ID: z.string().optional(),
 
   // ─── App ─────────────────────────────────────────────────────────────────────
   CRON_SECRET: z.string().optional(),
