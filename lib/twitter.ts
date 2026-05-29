@@ -6,54 +6,96 @@ type TwitterUserResponse = {
   data?: { id: string; username: string; name: string };
 };
 
+type UrlEntity = {
+  url: string;           // t.co 短链（推文正文中出现的）
+  expanded_url: string;  // 真实目标 URL
+  display_url: string;   // 可读缩短版，如 "pic.twitter.com/abc" 或 "example.com/arti…"
+};
+
 type TwitterTweetsResponse = {
   data?: Array<{
     id: string;
     text: string;
     /** X Premium 长推文的完整正文，存在时优先使用，text 字段仅为截断预览 */
-    note_tweet?: { text: string };
+    note_tweet?: {
+      text: string;
+      entities?: { urls?: UrlEntity[] };
+    };
     created_at: string;
     referenced_tweets?: Array<{ type: "retweeted" | "quoted" | "replied_to"; id: string }>;
     attachments?: { media_keys?: string[] };
+    entities?: { urls?: UrlEntity[] };
   }>;
   includes?: {
     media?: Array<{
       media_key: string;
       type: "photo" | "video" | "animated_gif";
-      url?: string;             // photo 有直链
-      preview_image_url?: string; // video/gif 有预览图
+      url?: string;
+      preview_image_url?: string;
     }>;
   };
   meta?: {
     newest_id?: string;
     oldest_id?: string;
     result_count: number;
-    next_token?: string;  // 分页 token
+    next_token?: string;
   };
 };
+
+// ─── URL 清理 ────────────────────────────────────────────────────────────────
+
+/**
+ * 把推文正文里的 t.co 短链替换掉：
+ * - 图片/媒体附件链接 (pic.twitter.com, twitter.com photo 等) -> 直接删除，图片单独展示
+ * - 真实外部链接 -> 替换为 display_url (可读缩略形式，如 example.com/arti...)
+ * - 末尾多余空白 -> 修剪掉
+ */
+function cleanTweetText(text: string, urlEntities?: UrlEntity[]): string {
+  if (!urlEntities || urlEntities.length === 0) return text.trim();
+
+  let cleaned = text;
+  for (const entity of urlEntities) {
+    const isMedia =
+      entity.display_url.startsWith("pic.twitter.com/") ||
+      entity.expanded_url.includes("/photo/") ||
+      entity.expanded_url.includes("/video/") ||
+      entity.expanded_url.startsWith("https://twitter.com/i/") ||
+      entity.expanded_url.startsWith("https://x.com/i/");
+
+    if (isMedia) {
+      cleaned = cleaned.replace(entity.url, "");
+    } else {
+      // 外部链接：用 display_url 替代（如 "example.com/article…"），更易读
+      cleaned = cleaned.replace(entity.url, entity.display_url);
+    }
+  }
+
+  // 清除多余的连续空格和末尾空白
+  return cleaned.replace(/\s{2,}/g, " ").trim();
+}
+
+// ─── Main fetch ───────────────────────────────────────────────────────────────
 
 export async function fetchLatestTweets(params: {
   username: string;
   sinceId?: string | null;
-  /** 爬取起始时间（包含），用于历史回填 */
   startTime?: Date;
-  /** 爬取结束时间（不包含），用于历史回填 */
   endTime?: Date;
   includeReplies?: boolean;
   includeRetweets?: boolean;
   maxResults?: number;
 }): Promise<TweetInput[]> {
   if (!env.TWITTER_BEARER_TOKEN) {
-    // No token yet — skip silently instead of crashing the pipeline
     return [];
   }
 
   const user = await fetchTwitterUser(params.username);
 
-  // ── 基础查询参数（分页循环中复用）────────────────────────────────────────
   const baseUrl = new URL(`https://api.twitter.com/2/users/${user.id}/tweets`);
-  // note_tweet 字段：X Premium 长推文的完整正文（超过 280 字时 text 字段仅为截断预览）
-  baseUrl.searchParams.set("tweet.fields", "created_at,referenced_tweets,attachments,note_tweet");
+  baseUrl.searchParams.set(
+    "tweet.fields",
+    "created_at,referenced_tweets,attachments,note_tweet,entities"
+  );
   baseUrl.searchParams.set("expansions", "attachments.media_keys");
   baseUrl.searchParams.set("media.fields", "url,preview_image_url,type");
   baseUrl.searchParams.set("max_results", String(Math.min(Math.max(params.maxResults ?? 10, 5), 100)));
@@ -67,12 +109,11 @@ export async function fetchLatestTweets(params: {
   if (!params.includeRetweets) exclude.push("retweets");
   if (exclude.length > 0) baseUrl.searchParams.set("exclude", exclude.join(","));
 
-  // ── 分页循环，自动拉取全部页 ──────────────────────────────────────────────
   const allTweets: TweetInput[] = [];
   const mediaMap = new Map<string, string>();
   let paginationToken: string | undefined;
   let pageCount = 0;
-  const MAX_PAGES = 20; // 安全上限，防止无限循环
+  const MAX_PAGES = 20;
 
   do {
     const pageUrl = new URL(baseUrl.toString());
@@ -82,13 +123,11 @@ export async function fetchLatestTweets(params: {
       headers: { Authorization: `Bearer ${env.TWITTER_BEARER_TOKEN}` }
     });
 
-    // 累积 media_key → URL 映射
     for (const m of data.includes?.media ?? []) {
       const imgUrl = m.url ?? m.preview_image_url;
       if (imgUrl) mediaMap.set(m.media_key, imgUrl);
     }
 
-    // 处理本页推文
     const pageTweets = (data.data ?? [])
       .filter((tweet) => {
         if (params.includeRetweets) return true;
@@ -98,13 +137,17 @@ export async function fetchLatestTweets(params: {
         const imageUrls = (tweet.attachments?.media_keys ?? [])
           .map((k) => mediaMap.get(k))
           .filter((u): u is string => !!u);
-        // note_tweet.text 是 X Premium 长推文的完整正文
-        // tweet.text 对长推文只是截断预览（末尾有 t.co 短链），优先使用 note_tweet.text
-        const fullText = tweet.note_tweet?.text ?? tweet.text;
+
+        // note_tweet.text 是长推文完整正文，优先使用
+        const rawText = tweet.note_tweet?.text ?? tweet.text;
+        // 长推文用 note_tweet 的 URL entities；普通推文用 tweet 的 entities
+        const urlEntities = tweet.note_tweet?.entities?.urls ?? tweet.entities?.urls;
+        const content = cleanTweetText(rawText, urlEntities);
+
         return {
           tweetId: tweet.id,
           authorUsername: user.username,
-          content: fullText,
+          content,
           tweetCreatedAt: new Date(tweet.created_at),
           sourceUrl: `https://x.com/${user.username}/status/${tweet.id}`,
           imageUrls: imageUrls.length > 0 ? imageUrls : undefined
@@ -120,7 +163,6 @@ export async function fetchLatestTweets(params: {
     }
   } while (paginationToken && pageCount < MAX_PAGES);
 
-  // 按时间升序返回（最旧的先处理）
   return allTweets.sort((a, b) => a.tweetCreatedAt.getTime() - b.tweetCreatedAt.getTime());
 }
 
