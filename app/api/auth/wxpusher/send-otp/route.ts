@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOtp } from "@/lib/wxpusher-auth";
 import { sendWxPusherToUids } from "@/lib/wxpusher";
-import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
