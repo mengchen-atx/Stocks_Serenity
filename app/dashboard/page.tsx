@@ -1,454 +1,279 @@
-import { formatDistanceToNow, format } from "date-fns";
-import { zhCN } from "date-fns/locale";
 import Link from "next/link";
-import { SignalBadge } from "@/components/SignalBadge";
-import { StatCard } from "@/components/StatCard";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { checkDashboardAccess } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import { getTopMentionedStocks } from "@/lib/insights";
 import type { AiAnalysis } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── CST 时间格式化 ────────────────────────────────────────────────────────────
 
-type TweetWithMentions = Prisma.TweetGetPayload<{
-  include: {
-    stockMentions: {
-      include: { stock: { select: { ticker: true; companyName: true; price: true } } };
-    };
-  };
-}>;
-
-type PushLogWithTweet = Prisma.PushLogGetPayload<{
-  include: { tweet: { select: { content: true } } };
-}>;
-
-type TopStock = { ticker: string; companyName: string | null; stance: string; count: number };
-type NarrativeTag = { tag: string; count: number };
-type DashboardData = {
-  tweets: TweetWithMentions[];
-  pushLogs: PushLogWithTweet[];
-  cronRuns: Awaited<ReturnType<typeof prisma.cronRun.findMany>>;
-  totals: { tweets: number; pushed: number };
-  topStocks: TopStock[];
-  narrativeTags: NarrativeTag[];
-  error: unknown;
-};
+function formatCST(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  }).formatToParts(date);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}/${get("month")}/${get("day")} ${get("hour")}:${get("minute")} CST`;
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
-  const data = await getDashboardData();
-  const { tweets, pushLogs, cronRuns, totals, topStocks, narrativeTags, error } = data;
+  if (!process.env.DATABASE_URL) {
+    return <div className="p-8 text-amber-700">请配置 DATABASE_URL</div>;
+  }
 
-  const recentBullish = tweets.reduce((sum, t) => {
-    const a = t.aiAnalysis as AiAnalysis | null;
-    return sum + (a?.bullish_stocks.length ?? 0);
-  }, 0);
-  const recentBearish = tweets.reduce((sum, t) => {
-    const a = t.aiAnalysis as AiAnalysis | null;
-    return sum + (a?.bearish_stocks.length ?? 0);
-  }, 0);
+  // ── 访问控制 ────────────────────────────────────────────────────────────────
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    redirect("/auth/signin?callbackUrl=/dashboard");
+  }
 
-  const lastCron = cronRuns[0];
+  const access = await checkDashboardAccess(session.user.id);
+  if (!access.ok) {
+    // 订阅过期或未订阅 → 跳转到付费墙页面
+    redirect(`/dashboard/subscribe?reason=${access.reason}`);
+  }
+
+  const [tweets, topMentions] = await Promise.all([
+    prisma.tweet.findMany({
+      orderBy: { tweetCreatedAt: "desc" },
+      include: {
+        stockMentions: {
+          include: { stock: { select: { ticker: true, companyName: true } } }
+        }
+      }
+    }).catch(() => []),
+    getTopMentionedStocks(30, 15).catch(() => [])
+  ]);
+
+  const total = tweets.length;
+  const pushed = tweets.filter((t) => t.pushed).length;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* ── Header ────────────────────────────────────────────────────────── */}
+      {/* ── Header ── */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600 text-white text-sm font-bold">S</div>
             <div>
               <h1 className="text-base font-semibold text-slate-900">Serenity Intelligence</h1>
-              <p className="text-xs text-slate-500 hidden sm:block">AI Infra Narrative Terminal</p>
+              <p className="text-xs text-slate-500">历史归档 · {total} 条推文 · {pushed} 条已推送</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            {/* Pipeline status */}
-            <div className={`hidden sm:flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
-              lastCron?.status === "SUCCESS"
-                ? "bg-green-50 text-green-700"
-                : lastCron?.status === "RUNNING"
-                ? "bg-blue-50 text-blue-700"
-                : "bg-slate-100 text-slate-500"
-            }`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${
-                lastCron?.status === "SUCCESS" ? "bg-green-500" :
-                lastCron?.status === "RUNNING" ? "bg-blue-500 animate-pulse" :
-                "bg-slate-400"
-              }`} />
-              {lastCron
-                ? `上次运行 ${formatDistanceToNow(lastCron.startedAt, { locale: zhCN, addSuffix: true })}`
-                : "尚未运行"}
-            </div>
-
-            <a
-              href="/api/cron"
-              className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700 transition-colors"
-            >
-              手动运行
+          <div className="flex items-center gap-2">
+            <a href="/admin" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+              手动分析
             </a>
-
-            <Link href="/pricing" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            <Link href="/pricing" className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700">
               订阅
             </Link>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
-        {/* ── DB Warning ───────────────────────────────────────────────────── */}
-        {error ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-            <strong>数据库未连接：</strong>请配置 <code className="font-mono text-xs">DATABASE_URL</code> 并运行{" "}
-            <code className="font-mono text-xs">npx prisma migrate deploy</code>。
-          </div>
-        ) : null}
+      {/* ── Body: Feed + Sidebar ── */}
+      <div className="mx-auto max-w-6xl px-4 py-6">
+        <div className="flex gap-6 items-start">
 
-        {/* ── Stats ────────────────────────────────────────────────────────── */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          <StatCard label="已抓取推文" value={totals.tweets} hint="历史总数" />
-          <StatCard label="已成功推送" value={totals.pushed} hint="多渠道推送" />
-          <StatCard label="利好信号" value={recentBullish} hint="近 30 条" tone="bullish" />
-          <StatCard label="利空信号" value={recentBearish} hint="近 30 条" tone="bearish" />
-        </div>
+          {/* ── 主推文 Feed ── */}
+          <div className="flex-1 min-w-0 space-y-4">
+            {tweets.length === 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-12 text-center text-slate-400">
+                暂无推文记录
+              </div>
+            )}
 
-        {/* ── Narrative Tags ─────────────────────────────────────────────── */}
-        {narrativeTags.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-700 uppercase tracking-wide">
-              🔥 热门 Narrative
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {narrativeTags.map(({ tag, count }) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm text-teal-800"
-                >
-                  #{tag}
-                  <span className="rounded-full bg-teal-200 px-1.5 py-0.5 text-xs font-semibold">
-                    {count}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+            {tweets.map((tweet) => {
+              const analysis = tweet.aiAnalysis as AiAnalysis | null;
+              return (
+                <article key={tweet.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
 
-        {/* ── Main Grid ────────────────────────────────────────────────────── */}
-        <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
-          {/* ── Tweet Feed ─────────────────────────────────────────────────── */}
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h2 className="font-semibold text-slate-900">推文 &amp; AI 分析</h2>
-              <span className="text-xs text-slate-500">最近 {tweets.length} 条</span>
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {tweets.map((tweet) => {
-                const analysis = tweet.aiAnalysis as AiAnalysis | null;
-                return (
-                  <article key={tweet.id} className="p-5 hover:bg-slate-50/50 transition-colors">
-                    {/* Meta */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-teal-700 bg-teal-50 rounded px-2 py-0.5">
-                          @{tweet.authorUsername}
+                  {/* 顶部深色栏：作者 / 时间 / 置信度 / 推送状态 */}
+                  <div className="flex items-center justify-between px-5 py-3 bg-slate-900 text-white">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-teal-300">@{tweet.authorUsername}</span>
+                      <span className="text-xs text-slate-400">{formatCST(tweet.tweetCreatedAt)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {analysis && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                          analysis.confidence >= 80 ? "bg-green-500/20 text-green-300" :
+                          analysis.confidence >= 50 ? "bg-yellow-500/20 text-yellow-300" :
+                          "bg-slate-500/20 text-slate-400"
+                        }`}>
+                          {analysis.confidence}%
                         </span>
-                        <span className="text-xs text-slate-400">
-                          {formatDistanceToNow(tweet.tweetCreatedAt, { locale: zhCN, addSuffix: true })}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {tweet.pushed ? (
-                          <span className="text-xs text-emerald-600 font-medium">✓ 已推送</span>
-                        ) : (
-                          <span className="text-xs text-slate-400">未推送</span>
-                        )}
-                        {analysis && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                            analysis.confidence >= 80
-                              ? "bg-green-100 text-green-700"
-                              : analysis.confidence >= 50
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-slate-100 text-slate-500"
-                          }`}>
-                            {analysis.confidence}%
-                          </span>
-                        )}
-                      </div>
+                      )}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        tweet.pushed ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-500/20 text-slate-400"
+                      }`}>
+                        {tweet.pushed ? "✓ 已推送" : "未推送"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="px-5 py-4 space-y-4">
+                    {/* 原文 */}
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-400 mb-1">原文</p>
+                      <p className="text-sm italic text-slate-600 leading-relaxed">&ldquo;{tweet.content}&rdquo;</p>
                     </div>
 
-                    {/* Original */}
-                    <p className="text-sm leading-relaxed text-slate-700 mb-3">
-                      {tweet.content}
-                    </p>
-
-                    {/* AI Analysis */}
                     {analysis ? (
-                      <div className="rounded-lg bg-slate-50 border border-slate-100 p-4 space-y-3">
+                      <>
+                        {/* 中文翻译 */}
                         {analysis.translated_content_cn && (
-                          <p className="text-sm leading-relaxed text-slate-600 italic">
-                            {analysis.translated_content_cn}
-                          </p>
-                        )}
-                        <p className="text-sm leading-relaxed text-slate-800">
-                          {analysis.summary_cn}
-                        </p>
-
-                        {/* Stock signals */}
-                        {tweet.stockMentions.length > 0 && (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {tweet.stockMentions.map((mention) => (
-                              <div
-                                key={mention.id}
-                                className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
-                              >
-                                <SignalBadge stance={mention.stance} />
-                                <span className="font-mono font-semibold text-slate-800">
-                                  {mention.stock.ticker}
-                                </span>
-                                {mention.stock.price != null && (
-                                  <span className="text-slate-500">
-                                    ${mention.stock.price.toFixed(2)}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
+                          <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
+                            <p className="text-xs uppercase tracking-wide text-blue-400 mb-1">中文翻译</p>
+                            <p className="text-sm text-blue-900 leading-relaxed">{analysis.translated_content_cn}</p>
                           </div>
                         )}
 
-                        {/* Sector tags */}
+                        {/* AI 解读 */}
+                        <div className="rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
+                          <p className="text-xs uppercase tracking-wide text-slate-400 mb-1">AI 核心解读</p>
+                          <p className="text-sm text-slate-800 leading-relaxed">{analysis.summary_cn}</p>
+                        </div>
+
+                        {/* 利好股票 */}
+                        {analysis.bullish_stocks.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-green-700 mb-2">📈 AI 判断利好</p>
+                            <div className="space-y-2">
+                              {analysis.bullish_stocks.map((s) => (
+                                <div key={s.ticker} className="rounded-lg bg-green-50 border-l-4 border-green-500 px-3 py-2">
+                                  <span className="font-mono font-bold text-sm text-green-900">{s.ticker}</span>
+                                  {s.company && <span className="text-xs text-green-700 ml-2">{s.company}</span>}
+                                  <p className="text-xs text-green-800 mt-1 leading-relaxed">{s.reason}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 利空股票 */}
+                        {analysis.bearish_stocks.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-red-700 mb-2">📉 AI 判断利空</p>
+                            <div className="space-y-2">
+                              {analysis.bearish_stocks.map((s) => (
+                                <div key={s.ticker} className="rounded-lg bg-red-50 border-l-4 border-red-500 px-3 py-2">
+                                  <span className="font-mono font-bold text-sm text-red-900">{s.ticker}</span>
+                                  {s.company && <span className="text-xs text-red-700 ml-2">{s.company}</span>}
+                                  <p className="text-xs text-red-800 mt-1 leading-relaxed">{s.reason}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 标签 */}
                         {analysis.sector_tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1.5">
                             {analysis.sector_tags.map((tag) => (
-                              <span key={tag} className="text-xs text-teal-600 bg-teal-50 rounded px-2 py-0.5">
+                              <span key={tag} className="text-xs bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5">
                                 #{tag}
                               </span>
                             ))}
                           </div>
                         )}
-                      </div>
+                      </>
                     ) : (
-                      <p className="text-xs text-slate-400">等待 AI 分析...</p>
+                      <p className="text-xs text-slate-400 italic">等待 AI 分析...</p>
                     )}
 
-                    {/* Source link */}
+                    {/* 查看原文 */}
                     {tweet.sourceUrl && (
-                      <a
-                        href={tweet.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-block text-xs text-teal-600 hover:underline"
-                      >
-                        查看原文 →
-                      </a>
+                      <div className="pt-1">
+                        <a href={tweet.sourceUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-teal-600 hover:underline">
+                          查看原文 →
+                        </a>
+                      </div>
                     )}
-                  </article>
-                );
-              })}
-
-              {tweets.length === 0 && (
-                <EmptyState text="暂无推文。配置 TWITTER_BEARER_TOKEN 后运行 Pipeline。" />
-              )}
-            </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
-          {/* ── Right Column ──────────────────────────────────────────────── */}
-          <div className="space-y-6">
-            {/* Stock Leaderboard */}
-            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-              <div className="border-b border-slate-100 px-5 py-4">
-                <h2 className="font-semibold text-slate-900">📈 最热提及股票</h2>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {topStocks.map((entry, i) => (
-                  <div key={`${entry.ticker}-${entry.stance}`} className="flex items-center gap-3 px-5 py-3">
-                    <span className="text-xs font-mono text-slate-400 w-4">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-mono font-semibold text-sm text-slate-900">{entry.ticker}</p>
-                      <p className="text-xs text-slate-500 truncate">{entry.companyName ?? ""}</p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <SignalBadge stance={entry.stance} />
-                      <span className="text-sm font-semibold text-slate-700">{entry.count}</span>
-                    </div>
-                  </div>
-                ))}
-                {topStocks.length === 0 && <EmptyState text="暂无信号" />}
+          {/* ── 右侧边栏 ── */}
+          <div className="w-72 flex-shrink-0 space-y-4">
+
+            {/* 统计卡片 */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">数据总览</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-center">
+                  <p className="text-xl font-bold text-slate-800">{total}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">归档推文</p>
+                </div>
+                <div className="rounded-lg bg-emerald-50 px-3 py-2 text-center">
+                  <p className="text-xl font-bold text-emerald-700">{pushed}</p>
+                  <p className="text-xs text-emerald-600 mt-0.5">已推送</p>
+                </div>
               </div>
             </div>
 
-            {/* Push Logs */}
-            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-              <div className="border-b border-slate-100 px-5 py-4">
-                <h2 className="font-semibold text-slate-900">🚀 推送记录</h2>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {pushLogs.map((log) => (
-                  <div key={log.id} className="px-5 py-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${
-                          log.status === "SENT"
-                            ? "bg-green-100 text-green-700"
-                            : log.status === "FAILED"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}>
-                          {log.status}
-                        </span>
-                        <span className="text-xs text-slate-500">{log.channel}</span>
-                      </div>
-                      <span className="text-xs text-slate-400 flex-shrink-0">
-                        {formatDistanceToNow(log.createdAt, { locale: zhCN, addSuffix: true })}
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-1 text-xs text-slate-500">
-                      {log.tweet.content}
-                    </p>
-                  </div>
-                ))}
-                {pushLogs.length === 0 && <EmptyState text="暂无推送记录" />}
-              </div>
-            </div>
-
-            {/* Cron History */}
-            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-              <div className="border-b border-slate-100 px-5 py-4">
-                <h2 className="font-semibold text-slate-900">⏱ 调度历史</h2>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {cronRuns.map((run) => (
-                  <div key={run.id} className="px-5 py-3">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                        run.status === "SUCCESS"
-                          ? "bg-green-100 text-green-700"
-                          : run.status === "RUNNING"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-red-100 text-red-700"
+            {/* 近30天热门股票 */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
+                🔥 近30天热门股票
+              </h2>
+              {topMentions.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">暂无数据</p>
+              ) : (
+                <div className="space-y-2">
+                  {topMentions.map((m, i) => (
+                    <div key={m.ticker} className="flex items-center gap-2">
+                      {/* 排名 */}
+                      <span className={`w-5 text-center text-xs font-bold flex-shrink-0 ${
+                        i === 0 ? "text-yellow-500" :
+                        i === 1 ? "text-slate-400" :
+                        i === 2 ? "text-amber-600" :
+                        "text-slate-300"
                       }`}>
-                        {run.status}
+                        {i + 1}
                       </span>
-                      <span className="text-xs text-slate-400">
-                        {format(run.startedAt, "MM-dd HH:mm", { locale: zhCN })}
-                      </span>
+                      {/* Ticker + 公司名 */}
+                      <div className="flex-1 min-w-0">
+                        <span className="font-mono font-bold text-sm text-slate-800">{m.ticker}</span>
+                        {m.companyName && (
+                          <span className="text-xs text-slate-400 ml-1 truncate">{m.companyName}</span>
+                        )}
+                      </div>
+                      {/* 利好 / 利空 次数 */}
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        {m.bullishCount > 0 && (
+                          <span className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">
+                            <span>📈</span>
+                            <span>利好 {m.bullishCount}次</span>
+                          </span>
+                        )}
+                        {m.bearishCount > 0 && (
+                          <span className="flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                            <span>📉</span>
+                            <span>利空 {m.bearishCount}次</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-500">
-                      拉取 {run.fetched} · 分析 {run.analyzed} · 推送 {run.pushed} · 跳过 {run.skipped}
-                    </p>
-                    {run.error && (
-                      <p className="mt-1 text-xs text-red-500 line-clamp-1">{run.error}</p>
-                    )}
-                  </div>
-                ))}
-                {cronRuns.length === 0 && <EmptyState text="尚未运行" />}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
+
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-// ─── Data fetching ─────────────────────────────────────────────────────────────
-
-async function getDashboardData(): Promise<DashboardData> {
-  if (!process.env.DATABASE_URL) {
-    return emptyDashboardData("DATABASE_URL is not configured");
-  }
-
-  try {
-    const [tweets, pushLogs, mentionGroups, cronRuns, tweetCount, pushedCount] = await Promise.all([
-      prisma.tweet.findMany({
-        orderBy: { tweetCreatedAt: "desc" },
-        take: 30,
-        include: {
-          stockMentions: {
-            include: { stock: { select: { ticker: true, companyName: true, price: true } } }
-          }
-        }
-      }),
-      prisma.pushLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 15,
-        include: { tweet: { select: { content: true } } }
-      }),
-      prisma.stockMention.groupBy({
-        by: ["stockId", "stance"],
-        _count: { stockId: true },
-        orderBy: { _count: { stockId: "desc" } },
-        take: 20
-      }),
-      prisma.cronRun.findMany({ orderBy: { startedAt: "desc" }, take: 10 }),
-      prisma.tweet.count(),
-      prisma.tweet.count({ where: { pushed: true } })
-    ]);
-
-    const stockIds = [...new Set(mentionGroups.map((m) => m.stockId))];
-    const stocks = await prisma.stock.findMany({
-      where: { id: { in: stockIds } },
-      select: { id: true, ticker: true, companyName: true }
-    });
-    const stockById = new Map(stocks.map((s) => [s.id, s]));
-
-    const topStocks: TopStock[] = mentionGroups.map((m) => {
-      const stock = stockById.get(m.stockId);
-      return {
-        ticker: stock?.ticker ?? "UNKNOWN",
-        companyName: stock?.companyName ?? null,
-        stance: m.stance,
-        count: m._count.stockId
-      };
-    });
-
-    // Build narrative tag frequency map from recent tweets
-    const tagCounts: Record<string, number> = {};
-    for (const tweet of tweets) {
-      const analysis = tweet.aiAnalysis as AiAnalysis | null;
-      if (!analysis) continue;
-      for (const tag of analysis.sector_tags ?? []) {
-        tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
-      }
-    }
-    const narrativeTags: NarrativeTag[] = Object.entries(tagCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
-      .map(([tag, count]) => ({ tag, count }));
-
-    return {
-      tweets,
-      pushLogs,
-      cronRuns,
-      totals: { tweets: tweetCount, pushed: pushedCount },
-      topStocks,
-      narrativeTags,
-      error: null
-    };
-  } catch (error) {
-    return emptyDashboardData(error);
-  }
-}
-
-function emptyDashboardData(error: unknown): DashboardData {
-  return {
-    tweets: [],
-    pushLogs: [],
-    cronRuns: [],
-    totals: { tweets: 0, pushed: 0 },
-    topStocks: [],
-    narrativeTags: [],
-    error
-  };
-}
-
-// ─── Shared component ─────────────────────────────────────────────────────────
-
-function EmptyState({ text }: { text: string }) {
-  return <p className="px-5 py-6 text-xs text-slate-400">{text}</p>;
 }
