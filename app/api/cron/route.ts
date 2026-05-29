@@ -3,7 +3,7 @@ import { env } from "@/lib/env";
 import { runSerenityPipeline } from "@/lib/pipeline";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // 最多5分钟，处理多条推文时足够
 
 function isAuthorized(request: NextRequest): boolean {
   if (!env.CRON_SECRET) return true;
