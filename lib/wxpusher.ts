@@ -165,6 +165,11 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
 
     <div style="margin-top:12px;text-align:right;">${sourceLink}</div>
 
+    <div style="margin-top:16px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;text-align:center;">
+      <span style="font-size:12px;color:#0369a1;">📊 查看所有历史分析 → </span>
+      <a href="https://alphaline.fit/auth/wxpusher" style="font-size:12px;color:#2563eb;font-weight:600;">alphaline.fit</a>
+    </div>
+
   </div>
 </div>`.trim();
 }
