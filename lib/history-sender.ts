@@ -53,16 +53,18 @@ export async function sendHistoryToSubscriber(uid: string): Promise<void> {
   if (!result.ok) {
     logger.warn({ uid, body: result.body }, "sendHistoryToSubscriber: welcome message failed");
 
-    await prisma.historySendJob.update({
+    await prisma.historySendJob.upsert({
       where: { uid },
-      data: { status: "failed", error: result.body }
+      create: { uid, status: "failed", error: result.body },
+      update: { status: "failed", error: result.body }
     }).catch(() => {});
     return;
   }
 
-  await prisma.historySendJob.update({
+  await prisma.historySendJob.upsert({
     where: { uid },
-    data: { status: "done", sent: 1, total: 1, doneAt: new Date() }
+    create: { uid, status: "done", sent: 1, total: 1, doneAt: new Date() },
+    update: { status: "done", sent: 1, total: 1, doneAt: new Date() }
   }).catch(() => {});
 
   logger.info({ uid }, "sendHistoryToSubscriber: welcome message sent");
