@@ -140,6 +140,7 @@ model Tweet {
   content           String
   contentHash       String       @unique
   sourceUrl         String?
+  imageUrls         String[]
   tweetCreatedAt    DateTime
   translatedContent String?
   aiAnalysis        Json?

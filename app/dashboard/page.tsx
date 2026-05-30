@@ -126,6 +126,13 @@ export default async function DashboardPage() {
                     <div>
                       <p className="mb-1 text-xs uppercase tracking-wide text-slate-400">原文</p>
                       <p className="text-sm italic leading-relaxed text-slate-600">&ldquo;{stripTcoLinks(tweet.content)}&rdquo;</p>
+                      {tweet.imageUrls.length > 0 && (
+                        <div className="mt-2 flex flex-col gap-2">
+                          {tweet.imageUrls.map((url, i) => (
+                            <img key={i} src={url} alt="" className="w-full rounded-lg object-cover" />
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {analysis ? (

@@ -112,6 +112,7 @@ export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
         content: tweet.content,
         contentHash,
         sourceUrl: tweet.sourceUrl,
+        imageUrls: tweet.imageUrls ?? [],
         tweetCreatedAt: tweet.tweetCreatedAt,
         watchUserId
       }
