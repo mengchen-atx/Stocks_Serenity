@@ -51,9 +51,11 @@ export default async function DashboardPage() {
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#070d1a]/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-teal-500 text-white text-sm font-bold shadow-lg shadow-teal-500/30">
-              S
-            </div>
+            <img
+              src="/serenity-portrait.jpg"
+              alt="Serenity"
+              className="h-8 w-8 flex-shrink-0 rounded-lg object-cover shadow-lg shadow-teal-500/20"
+            />
             <div>
               <h1 className="text-sm font-semibold text-slate-100 sm:text-base tracking-tight">
                 Serenity Intelligence
