@@ -238,11 +238,16 @@ function normalizeAnalysis(raw: string): AiAnalysis {
  * Handles raw JSON, ```json code blocks, and JSON embedded in explanatory text.
  */
 function extractJson(raw: string): string {
-  const trimmed = raw.trim();
+  let trimmed = raw.trim();
 
   // Strip markdown code blocks: ```json ... ``` or ``` ... ```
   const codeBlockMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
-  if (codeBlockMatch?.[1]) return codeBlockMatch[1].trim();
+  if (codeBlockMatch?.[1]) trimmed = codeBlockMatch[1].trim();
+
+  // Replace Chinese curly quotes (“ / ”) with escaped ASCII double quotes.
+  // Some models (e.g. Xiaomi MiMo) emit " and " inside JSON string values,
+  // which breaks JSON.parse because they look like string delimiters.
+  trimmed = trimmed.replace(/“/g, '\\"').replace(/”/g, '\\"');
 
   // If it starts with { it's likely clean JSON
   if (trimmed.startsWith("{")) return trimmed;

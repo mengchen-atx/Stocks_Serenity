@@ -9,8 +9,8 @@ export type ThemeTickers = Record<string, string[]>;
 
 export const THEME_TICKERS: ThemeTickers = {
   // ─── Optical / CPO ───────────────────────────────────────────────────────────
-  CPO: ["SIVI", "POET", "COHR", "LITE", "IIVI", "FNSR", "NPTN", "ACIA", "CIEN", "INFN"],
-  SILICON_PHOTONICS: ["SIVI", "POET", "INTC", "IBM", "COHR", "MRVL", "AMAT"],
+  CPO: ["SIVE", "POET", "COHR", "LITE", "IIVI", "FNSR", "NPTN", "ACIA", "CIEN", "INFN"],
+  SILICON_PHOTONICS: ["SIVE", "POET", "INTC", "IBM", "COHR", "MRVL", "AMAT"],
   OPTICAL_NETWORKING: ["CIEN", "INFN", "ADTN", "CALX", "COHR", "LITE", "VIAV"],
   OPTICAL_TRANSCEIVER: ["COHR", "LITE", "FNSR", "AAOI", "IIVI"],
 

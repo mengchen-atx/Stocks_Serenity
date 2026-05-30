@@ -65,6 +65,7 @@ ${buildKnowledgeContext()}
 - Ticker 必须大写，必须是真实美股代码。
 - 只输出严格 JSON，不要 markdown code block，不要多余解释。
 - 不要推荐粉红单或无法在主流券商交易的股票。
+- **禁止修改作者在推文中明确用 $ 写出的 ticker**：作者写 $SIVE 就输出 SIVE，不能改成 SIVI 或任何其他形式；作者写 $AAOI 就输出 AAOI。推文中 $ 后面的字母是最终答案，不允许"纠正"或替换。
 
 === 输出 JSON Schema ===
 
