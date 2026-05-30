@@ -63,9 +63,6 @@ export default async function DashboardPage() {
             <span className="hidden sm:inline text-xs text-slate-400 font-mono">
               {uid.slice(0, 12)}…
             </span>
-            <a href="/admin" className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
-              手动分析
-            </a>
             <form action="/api/auth/wxpusher/logout" method="POST">
               <button
                 type="submit"
