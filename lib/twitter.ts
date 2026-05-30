@@ -145,8 +145,12 @@ export async function fetchLatestTweets(params: {
 
         // note_tweet.text 是长推文完整正文，优先使用
         const rawText = tweet.note_tweet?.text ?? tweet.text;
-        // 长推文用 note_tweet 的 URL entities；普通推文用 tweet 的 entities
-        const urlEntities = tweet.note_tweet?.entities?.urls ?? tweet.entities?.urls;
+        // 合并两套 URL entities：note_tweet 的（长推文正文用）+ tweet 的（普通/截断版用）
+        // 两者取并集，确保正文里所有 t.co 链接都能被正确替换或删除
+        const urlEntities = [
+          ...(tweet.note_tweet?.entities?.urls ?? []),
+          ...(tweet.entities?.urls ?? [])
+        ];
         const content = cleanTweetText(rawText, urlEntities);
 
         return {
