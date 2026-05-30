@@ -222,9 +222,12 @@ export default async function DashboardPage() {
 
             {/* 近30天全部股票 */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                📊 近30天提及股票（{topMentions.length} 只）
-              </h2>
+              <div className="mb-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  📊 近30天提及股票（{topMentions.length} 只）
+                </h2>
+                <p className="mt-0.5 text-[10px] text-slate-400">点击股票代码查看详情 →</p>
+              </div>
               {topMentions.length === 0 ? (
                 <p className="text-xs italic text-slate-400">暂无数据</p>
               ) : (
