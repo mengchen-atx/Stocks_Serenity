@@ -36,7 +36,6 @@ export default async function StockDetailPage({
   const stock = await prisma.stock.findUnique({ where: { ticker: upperTicker } });
   if (!stock) notFound();
 
-  // 所有提及该股票的 mentions，按推文时间倒序
   const mentions = await prisma.stockMention.findMany({
     where: { stock: { ticker: upperTicker } },
     include: {
@@ -53,7 +52,7 @@ export default async function StockDetailPage({
   const bullishCount = mentions.filter((m) => m.stance === "bullish").length;
   const bearishCount = mentions.filter((m) => m.stance === "bearish").length;
 
-  // ── AI 公司简介（有缓存用缓存，没有则生成并存库）─────────────────────────
+  // AI 公司简介（有缓存用缓存，没有则生成并存库）
   let profile: StockAiProfile;
   if (stock.aiProfile) {
     profile = stock.aiProfile as StockAiProfile;
@@ -72,49 +71,86 @@ export default async function StockDetailPage({
 
   const activeSegmentIds = new Set(profile.segments);
 
+  // 总体多空倾向用于顶部渐变
+  const overallBullish = bullishCount > bearishCount;
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#070d1a] text-slate-200">
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#070d1a]/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
           <Link
             href="/dashboard"
-            className="flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            className="flex items-center gap-1 rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-slate-800 transition-colors"
           >
             ← 返回
           </Link>
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="font-mono text-lg font-bold text-slate-900">${upperTicker}</span>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="font-mono text-xl font-bold text-white tracking-tight">${upperTicker}</span>
             {stock.companyName && (
               <span className="truncate text-sm text-slate-500">{stock.companyName}</span>
             )}
           </div>
+          {/* 多空倾向指示 */}
+          {mentions.length > 0 && (
+            <div className="ml-auto flex-shrink-0">
+              {bullishCount > bearishCount ? (
+                <span className="flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 font-mono text-xs font-bold text-emerald-400">
+                  ▲ 偏多
+                </span>
+              ) : bearishCount > bullishCount ? (
+                <span className="flex items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 font-mono text-xs font-bold text-red-400">
+                  ▼ 偏空
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 rounded border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs font-bold text-slate-500">
+                  — 中性
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-3 py-5 sm:px-4 space-y-5">
+      <div className="mx-auto max-w-3xl px-3 py-5 sm:px-4 space-y-4">
 
         {/* ── 公司简介 ── */}
         {profile.description && (
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">公司简介</span>
+          <div className="rounded-xl border border-slate-800 bg-[#0d1628] p-4 shadow-xl">
+            <div className="mb-2.5 flex items-center gap-2.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">公司简介</span>
               {profile.role && (
-                <span className="rounded-full bg-teal-50 border border-teal-200 px-2.5 py-0.5 text-xs font-medium text-teal-700">
+                <span className="rounded border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-xs font-semibold text-teal-400">
                   {profile.role}
                 </span>
               )}
             </div>
-            <p className="text-sm leading-relaxed text-slate-700">{profile.description}</p>
+            <p className="text-sm leading-relaxed text-slate-300">{profile.description}</p>
           </div>
         )}
 
-        {/* ── AI 供应链图 ── */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">AI 基础设施供应链</p>
+        {/* ── 多空统计 ── */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {bullishCount > 0 && (
+            <span className="flex items-center gap-1.5 rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 font-mono text-sm font-bold text-emerald-400">
+              ▲ 看好 {bullishCount} 次
+            </span>
+          )}
+          {bearishCount > 0 && (
+            <span className="flex items-center gap-1.5 rounded border border-red-500/30 bg-red-500/10 px-3 py-1.5 font-mono text-sm font-bold text-red-400">
+              ▼ 看空 {bearishCount} 次
+            </span>
+          )}
+          <span className="font-mono text-xs text-slate-600">共 {mentions.length} 条推文提及</span>
+        </div>
 
-          {/* 手机：2列网格；桌面：5列 */}
+        {/* ── AI 供应链图 ── */}
+        <div className="rounded-xl border border-slate-800 bg-[#0d1628] p-4 shadow-xl">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            AI 基础设施供应链
+          </p>
+
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {SUPPLY_CHAIN.map((seg, i) => {
               const isActive = activeSegmentIds.has(seg.id);
@@ -123,52 +159,37 @@ export default async function StockDetailPage({
                   key={seg.id}
                   className={`relative rounded-lg border px-3 py-2.5 transition-all ${
                     isActive
-                      ? "border-teal-400 bg-teal-50 shadow-sm ring-2 ring-teal-300"
-                      : "border-slate-100 bg-slate-50"
+                      ? "border-teal-500/50 bg-teal-500/10 shadow-lg shadow-teal-500/10 ring-1 ring-teal-500/30"
+                      : "border-slate-800 bg-slate-900/40"
                   }`}
                 >
                   {isActive && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-teal-500 px-1.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap">
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full border border-teal-500/50 bg-teal-500 px-2 py-0.5 text-[10px] font-bold text-white whitespace-nowrap shadow-lg shadow-teal-500/30">
                       ← 在这里
                     </span>
                   )}
-                  <div className="text-lg mb-1">{seg.emoji}</div>
-                  <div className={`text-xs font-semibold leading-tight ${isActive ? "text-teal-800" : "text-slate-600"}`}>
+                  <div className="mb-1 text-base">{seg.emoji}</div>
+                  <div className={`text-xs font-bold leading-tight ${isActive ? "text-teal-300" : "text-slate-500"}`}>
                     {seg.label}
                   </div>
-                  <div className="mt-0.5 text-[10px] leading-tight text-slate-400">{seg.desc}</div>
-                  {/* 箭头（最后一个不显示） */}
+                  <div className="mt-0.5 text-[10px] leading-tight text-slate-600">{seg.desc}</div>
                   {i < SUPPLY_CHAIN.length - 1 && (
-                    <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 text-slate-300 text-xs hidden lg:block">›</div>
+                    <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 text-slate-700 text-xs hidden lg:block">›</div>
                   )}
                 </div>
               );
             })}
           </div>
 
-          {/* 流程方向说明 */}
-          <p className="mt-2 text-center text-[10px] text-slate-300">← 上游原材料 ············ 下游应用 →</p>
-        </div>
-
-        {/* ── 多空统计 ── */}
-        <div className="flex flex-wrap gap-3">
-          {bullishCount > 0 && (
-            <span className="flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-sm font-semibold text-green-700">
-              📈 看好 {bullishCount} 次
-            </span>
-          )}
-          {bearishCount > 0 && (
-            <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">
-              📉 看空 {bearishCount} 次
-            </span>
-          )}
-          <span className="text-xs text-slate-400 self-center">共 {mentions.length} 条推文提及</span>
+          <p className="mt-3 text-center text-[10px] text-slate-700 font-mono">
+            ← 上游原材料 ············ 下游应用 →
+          </p>
         </div>
 
         {/* ── 推文列表 ── */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {mentions.length === 0 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-slate-400">
+            <div className="rounded-xl border border-slate-800 bg-[#0d1628] p-10 text-center text-slate-600">
               暂无相关推文
             </div>
           )}
@@ -179,24 +200,32 @@ export default async function StockDetailPage({
             const isBullish = mention.stance === "bullish";
 
             return (
-              <article key={mention.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <article
+                key={mention.id}
+                className="overflow-hidden rounded-xl border border-slate-800 bg-[#0d1628] shadow-xl transition-all hover:border-slate-700"
+              >
+                {/* 顶部色条 */}
+                <div className={`h-0.5 w-full ${isBullish ? "bg-emerald-500/50" : "bg-red-500/50"}`} />
 
-                {/* 顶部栏 */}
-                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-slate-900 px-3 py-2.5 text-white sm:px-5">
+                {/* meta 栏 */}
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 bg-slate-950/60 px-3 py-2.5 sm:px-5">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-teal-300">@{tweet.authorUsername}</span>
-                    <span className="text-xs text-slate-400">{formatCST(tweet.tweetCreatedAt)}</span>
+                    <span className="text-xs font-semibold text-cyan-400">@{tweet.authorUsername}</span>
+                    <span className="font-mono text-[11px] text-slate-600">{formatCST(tweet.tweetCreatedAt)}</span>
                   </div>
-                  <span className={`flex-shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    isBullish ? "bg-green-500/20 text-green-300" : "bg-red-500/20 text-red-300"
+                  <span className={`flex-shrink-0 rounded border px-2.5 py-0.5 font-mono text-xs font-bold ${
+                    isBullish
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                      : "border-red-500/30 bg-red-500/10 text-red-400"
                   }`}>
-                    {isBullish ? "📈 看好" : "📉 看空"}
+                    {isBullish ? "▲ 看好" : "▼ 看空"}
                   </span>
                 </div>
 
                 <div className="space-y-3 px-3 py-3 sm:px-5 sm:py-4">
+
                   {/* 原文 */}
-                  <p className="text-sm italic leading-relaxed text-slate-600">
+                  <p className="text-sm italic leading-relaxed text-slate-400">
                     &ldquo;{stripTcoLinks(tweet.content)}&rdquo;
                   </p>
 
@@ -204,33 +233,39 @@ export default async function StockDetailPage({
                   {tweet.imageUrls.length > 0 && (
                     <div className="flex flex-col gap-2">
                       {tweet.imageUrls.map((url, i) => (
-                        <img key={i} src={url} alt="" className="w-full rounded-lg object-cover" />
+                        <img key={i} src={url} alt="" className="w-full rounded-lg object-cover opacity-90" />
                       ))}
                     </div>
                   )}
 
-                  {/* 提及该股票的理由 */}
-                  <div className={`rounded-lg border-l-4 px-3 py-2 ${
-                    isBullish ? "border-green-500 bg-green-50" : "border-red-500 bg-red-50"
+                  {/* AI 分析理由 */}
+                  <div className={`rounded-lg border-l-2 px-3 py-2 ${
+                    isBullish
+                      ? "border-emerald-500 bg-emerald-500/5"
+                      : "border-red-500 bg-red-500/5"
                   }`}>
-                    <p className="mb-0.5 text-xs font-semibold text-slate-500">AI 分析理由</p>
-                    <p className={`text-xs leading-relaxed ${isBullish ? "text-green-800" : "text-red-800"}`}>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">AI 分析理由</p>
+                    <p className={`text-xs leading-relaxed ${isBullish ? "text-emerald-300/80" : "text-red-300/80"}`}>
                       {mention.reason}
                     </p>
                   </div>
 
-                  {/* AI 整体解读 */}
+                  {/* AI 核心解读 */}
                   {analysis?.summary_cn && (
-                    <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
-                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-400">AI 核心解读</p>
-                      <p className="text-sm leading-relaxed text-slate-700">{analysis.summary_cn}</p>
+                    <div className="rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2.5">
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">AI 核心解读</p>
+                      <p className="text-sm leading-relaxed text-slate-300">{analysis.summary_cn}</p>
                     </div>
                   )}
 
                   {/* 查看原文 */}
                   {tweet.sourceUrl && (
-                    <a href={tweet.sourceUrl} target="_blank" rel="noopener noreferrer"
-                      className="block text-xs text-teal-600 hover:underline">
+                    <a
+                      href={tweet.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-xs font-medium text-teal-500 hover:text-teal-400 hover:underline transition-colors"
+                    >
                       查看原文 →
                     </a>
                   )}
