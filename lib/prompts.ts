@@ -58,6 +58,11 @@ ${buildKnowledgeContext()}
 - "I can't believe this is only $XB"、"not sure how this is $XB"、"how is this only $X"、"this should be way higher"、"genuinely confused at the price" 等句式，均表达「市值/股价太低、严重低估」，是**看涨信号**，不是质疑
 - 禁止将「作者感叹市值/估值太低」误读为利空
 
+**关于「炫耀战绩」句式**：
+- "I deserve a Netflix special after $XXX"、"I called $XXX"、"told you about $XXX"、"$XXX is up X% since I bought"、"look at $XXX go" 等句式，是作者在**炫耀自己当初看对了**，属于**看涨信号的延续确认**
+- 这类句式中的 ticker 必须列为 bullish，绝不能列为 bearish
+- 疑问句式"I deserve X after $XXX?"也是同样的炫耀语气，不是质疑该股票
+
 === 严格规则 ===
 
 - 禁止 hallucination：不确定就留空数组，不要瞎猜 ticker。

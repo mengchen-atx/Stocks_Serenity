@@ -89,16 +89,31 @@ async function main() {
         const contentChanged = existing.content !== tweet.content;
         const imageMissing = existing.imageUrls.length === 0 && (tweet.imageUrls ?? []).length > 0;
 
-        // 更新正文、图片（不管有没有变化，都用最新抓到的覆盖）
-        await prisma.tweet.update({
-          where: { id: existing.id },
-          data: {
-            content: tweet.content,
-            contentHash,
-            imageUrls: tweet.imageUrls ?? [],
-            sourceUrl: tweet.sourceUrl ?? existing.sourceUrl
-          }
-        });
+        // 更新正文、图片（contentHash 只在真正变化时才更新，避免冲突）
+        const hashChanged = existing.contentHash !== contentHash;
+        try {
+          await prisma.tweet.update({
+            where: { id: existing.id },
+            data: {
+              content: tweet.content,
+              ...(hashChanged ? { contentHash } : {}),
+              imageUrls: tweet.imageUrls ?? [],
+              sourceUrl: tweet.sourceUrl ?? existing.sourceUrl
+            }
+          });
+        } catch (e: unknown) {
+          // P2002: contentHash 与另一条推文冲突，跳过 hash 更新，只更新图片和内容
+          if ((e as { code?: string }).code === "P2002") {
+            await prisma.tweet.update({
+              where: { id: existing.id },
+              data: {
+                content: tweet.content,
+                imageUrls: tweet.imageUrls ?? [],
+                sourceUrl: tweet.sourceUrl ?? existing.sourceUrl
+              }
+            });
+          } else throw e;
+        }
 
         savedId = existing.id;
         // 内容变了或之前没有 AI 分析 → 重新分析
