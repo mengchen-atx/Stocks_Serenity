@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
 import { getAllMentionedStocks } from "@/lib/insights";
@@ -240,7 +241,12 @@ export default async function DashboardPage() {
                         {i + 1}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <span className="font-mono font-bold text-sm text-slate-800">{m.ticker}</span>
+                        <Link
+                          href={`/dashboard/stock/${m.ticker}`}
+                          className="font-mono font-bold text-sm text-slate-800 hover:text-teal-600 hover:underline"
+                        >
+                          {m.ticker}
+                        </Link>
                       </div>
                       <div className="flex flex-shrink-0 flex-col items-end gap-1">
                         {m.bullishCount > 0 && (
