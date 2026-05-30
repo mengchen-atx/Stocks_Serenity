@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { grantChannelAccess } from "@/lib/channels";
 
 // WxPusher 回调 body 格式（基于官方文档）
 // action: "ADD_TOPIC" = 订阅话题, "DELETE_TOPIC" = 取关话题
@@ -79,6 +80,20 @@ export async function POST(request: NextRequest) {
   }
 
   logger.info({ uid }, "WxPusher webhook: new subscriber recorded");
+
+  // 根据 topicId 自动授权对应频道的 dashboard 访问权限
+  try {
+    const channel = topicId
+      ? await prisma.channel.findFirst({ where: { wxpusherTopicId: String(topicId) } })
+      : await prisma.channel.findUnique({ where: { slug: "serenity" } }); // 兜底给 serenity
+
+    if (channel) {
+      await grantChannelAccess(uid, channel.slug);
+      logger.info({ uid, channelSlug: channel.slug }, "auto-granted channel access on subscribe");
+    }
+  } catch (err) {
+    logger.error({ err, uid }, "failed to auto-grant channel access");
+  }
 
   return NextResponse.json({ ok: true, message: "subscribed", uid });
 }
