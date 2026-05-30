@@ -49,6 +49,15 @@ ${buildKnowledgeContext()}
 - 如果某 ticker 在推文中仅作为「历史先例」「类比对象」「对比案例」出现，不代表作者对它有任何多空判断
 - 判断标准：作者是否在这条推文中对该 ticker 做出明确的买入/卖出/看多/看空的表态？没有则不列入
 
+**关于推荐列表型推文**：
+- 如果推文的整体框架是「选股推荐 / best picks / risk-reward 清单」，则列出的每支股票默认都是看涨对象
+- 必须在同一推文中找到明确的负面句子，才能将某支股票列为利空
+- 绝不能因为单独一句话听起来存疑，就把整篇看涨框架下的股票判断为利空
+
+**关于「低估值反讽」句式**：
+- "I can't believe this is only $XB"、"not sure how this is $XB"、"how is this only $X"、"this should be way higher"、"genuinely confused at the price" 等句式，均表达「市值/股价太低、严重低估」，是**看涨信号**，不是质疑
+- 禁止将「作者感叹市值/估值太低」误读为利空
+
 === 严格规则 ===
 
 - 禁止 hallucination：不确定就留空数组，不要瞎猜 ticker。
