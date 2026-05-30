@@ -93,6 +93,27 @@ export async function sendHistoryToSubscriber(uid: string): Promise<void> {
     // 近 30 天热榜（全程复用同一份，避免重复查询）
     const topMentions = await getTopMentionedStocks(30, 20).catch(() => undefined);
 
+    // ── 欢迎消息（第一条）────────────────────────────────────────────────────
+    const welcomeHtml = `
+<div style="font-family:sans-serif;max-width:520px;padding:20px;background:#f8fafc;border-radius:12px;">
+  <h2 style="color:#0f172a;margin:0 0 12px;">📊 欢迎加入 Serenity Intelligence</h2>
+  <p style="color:#334155;line-height:1.6;margin:0 0 12px;">
+    你已成功订阅！我们实时监控科技投资 KOL 的推文，用 AI 深度分析投资逻辑，第一时间推送到你的微信。
+  </p>
+  <div style="background:#e0f2fe;border-radius:8px;padding:12px 16px;margin-bottom:12px;">
+    <p style="color:#0369a1;margin:0;font-size:14px;">
+      📬 接下来将为你补发 <strong>${total} 条</strong>历史分析消息，请稍候…
+    </p>
+  </div>
+  <p style="color:#64748b;font-size:13px;margin:0;">
+    · 每条消息包含原文翻译、AI 核心解读、利好/利空股票<br/>
+    · Dashboard 登录：<a href="https://stocks-plum.vercel.app/dashboard" style="color:#0ea5e9;">stocks-plum.vercel.app/dashboard</a>
+  </p>
+</div>`.trim();
+
+    await sendWxPusherToUids([uid], welcomeHtml, `欢迎加入 Serenity！即将补发 ${total} 条历史分析`, null);
+    await sleep(SEND_DELAY_MS);
+
     let sent = 0;
     for (const tweet of tweets) {
       const analysis = tweet.aiAnalysis as AiAnalysis;
