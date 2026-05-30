@@ -7,6 +7,12 @@ import type { AiAnalysis } from "@/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// ─── 展示层清理：去掉遗留的 t.co 短链 ────────────────────────────────────────────
+
+function stripTcoLinks(text: string): string {
+  return text.replace(/https?:\/\/t\.co\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
 // ─── CST 时间格式化 ────────────────────────────────────────────────────────────
 
 function formatCST(date: Date): string {
@@ -119,7 +125,7 @@ export default async function DashboardPage() {
                     {/* 原文 */}
                     <div>
                       <p className="mb-1 text-xs uppercase tracking-wide text-slate-400">原文</p>
-                      <p className="text-sm italic leading-relaxed text-slate-600">&ldquo;{tweet.content}&rdquo;</p>
+                      <p className="text-sm italic leading-relaxed text-slate-600">&ldquo;{stripTcoLinks(tweet.content)}&rdquo;</p>
                     </div>
 
                     {analysis ? (
