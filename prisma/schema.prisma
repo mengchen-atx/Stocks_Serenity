@@ -161,6 +161,7 @@ model Stock {
   id                 String         @id @default(cuid())
   ticker             String         @unique
   companyName        String?
+  aiProfile          Json?
   exchange           String?
   currency           String?
   price              Float?

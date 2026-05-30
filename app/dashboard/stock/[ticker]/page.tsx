@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
+import { generateStockProfile, SUPPLY_CHAIN, type StockAiProfile } from "@/lib/stock-profile";
 import type { AiAnalysis } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -32,24 +33,17 @@ export default async function StockDetailPage({
   const { ticker } = await params;
   const upperTicker = ticker.toUpperCase();
 
-  const stock = await prisma.stock.findUnique({
-    where: { ticker: upperTicker }
-  });
+  const stock = await prisma.stock.findUnique({ where: { ticker: upperTicker } });
   if (!stock) notFound();
 
-  // 所有提及该股票的 mentions，关联推文，按推文时间倒序
+  // 所有提及该股票的 mentions，按推文时间倒序
   const mentions = await prisma.stockMention.findMany({
     where: { stock: { ticker: upperTicker } },
     include: {
       tweet: {
         select: {
-          id: true,
-          content: true,
-          tweetCreatedAt: true,
-          sourceUrl: true,
-          aiAnalysis: true,
-          imageUrls: true,
-          authorUsername: true
+          id: true, content: true, tweetCreatedAt: true,
+          sourceUrl: true, aiAnalysis: true, imageUrls: true, authorUsername: true
         }
       }
     },
@@ -58,6 +52,25 @@ export default async function StockDetailPage({
 
   const bullishCount = mentions.filter((m) => m.stance === "bullish").length;
   const bearishCount = mentions.filter((m) => m.stance === "bearish").length;
+
+  // ── AI 公司简介（有缓存用缓存，没有则生成并存库）─────────────────────────
+  let profile: StockAiProfile;
+  if (stock.aiProfile) {
+    profile = stock.aiProfile as StockAiProfile;
+  } else {
+    const reasons = mentions.map((m) => m.reason).filter(Boolean) as string[];
+    try {
+      profile = await generateStockProfile(upperTicker, stock.companyName, reasons);
+      await prisma.stock.update({
+        where: { ticker: upperTicker },
+        data: { aiProfile: profile }
+      });
+    } catch {
+      profile = { description: "", role: "", segments: [] };
+    }
+  }
+
+  const activeSegmentIds = new Set(profile.segments);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -71,49 +84,85 @@ export default async function StockDetailPage({
           >
             ← 返回
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="font-mono text-lg font-bold text-slate-900">${upperTicker}</span>
             {stock.companyName && (
-              <span className="text-sm text-slate-500">{stock.companyName}</span>
+              <span className="truncate text-sm text-slate-500">{stock.companyName}</span>
             )}
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-3 py-5 sm:px-4">
+      <div className="mx-auto max-w-3xl px-3 py-5 sm:px-4 space-y-5">
 
-        {/* ── 统计 + 外部链接 ── */}
-        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3">
-            {bullishCount > 0 && (
-              <span className="flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-sm font-semibold text-green-700">
-                📈 看好 {bullishCount} 次
-              </span>
-            )}
-            {bearishCount > 0 && (
-              <span className="flex items-center gap-1.5 rounded-full bg-red-50 border border-red-200 px-3 py-1 text-sm font-semibold text-red-700">
-                📉 看空 {bearishCount} 次
-              </span>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              <a
-                href={`https://finance.yahoo.com/quote/${upperTicker}/news/`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
-              >
-                📰 Yahoo 新闻
-              </a>
-              <a
-                href={`https://finance.yahoo.com/quote/${upperTicker}/`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-md bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100"
-              >
-                📊 行情
-              </a>
+        {/* ── 公司简介 ── */}
+        {profile.description && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">公司简介</span>
+              {profile.role && (
+                <span className="rounded-full bg-teal-50 border border-teal-200 px-2.5 py-0.5 text-xs font-medium text-teal-700">
+                  {profile.role}
+                </span>
+              )}
             </div>
+            <p className="text-sm leading-relaxed text-slate-700">{profile.description}</p>
           </div>
+        )}
+
+        {/* ── AI 供应链图 ── */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">AI 基础设施供应链</p>
+
+          {/* 手机：2列网格；桌面：5列 */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {SUPPLY_CHAIN.map((seg, i) => {
+              const isActive = activeSegmentIds.has(seg.id);
+              return (
+                <div
+                  key={seg.id}
+                  className={`relative rounded-lg border px-3 py-2.5 transition-all ${
+                    isActive
+                      ? "border-teal-400 bg-teal-50 shadow-sm ring-2 ring-teal-300"
+                      : "border-slate-100 bg-slate-50"
+                  }`}
+                >
+                  {isActive && (
+                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-teal-500 px-1.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap">
+                      ← 在这里
+                    </span>
+                  )}
+                  <div className="text-lg mb-1">{seg.emoji}</div>
+                  <div className={`text-xs font-semibold leading-tight ${isActive ? "text-teal-800" : "text-slate-600"}`}>
+                    {seg.label}
+                  </div>
+                  <div className="mt-0.5 text-[10px] leading-tight text-slate-400">{seg.desc}</div>
+                  {/* 箭头（最后一个不显示） */}
+                  {i < SUPPLY_CHAIN.length - 1 && (
+                    <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 text-slate-300 text-xs hidden lg:block">›</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 流程方向说明 */}
+          <p className="mt-2 text-center text-[10px] text-slate-300">← 上游原材料 ············ 下游应用 →</p>
+        </div>
+
+        {/* ── 多空统计 ── */}
+        <div className="flex flex-wrap gap-3">
+          {bullishCount > 0 && (
+            <span className="flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-sm font-semibold text-green-700">
+              📈 看好 {bullishCount} 次
+            </span>
+          )}
+          {bearishCount > 0 && (
+            <span className="flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">
+              📉 看空 {bearishCount} 次
+            </span>
+          )}
+          <span className="text-xs text-slate-400 self-center">共 {mentions.length} 条推文提及</span>
         </div>
 
         {/* ── 推文列表 ── */}
@@ -146,7 +195,6 @@ export default async function StockDetailPage({
                 </div>
 
                 <div className="space-y-3 px-3 py-3 sm:px-5 sm:py-4">
-
                   {/* 原文 */}
                   <p className="text-sm italic leading-relaxed text-slate-600">
                     &ldquo;{stripTcoLinks(tweet.content)}&rdquo;
@@ -161,7 +209,7 @@ export default async function StockDetailPage({
                     </div>
                   )}
 
-                  {/* 这条推文提及该股票的原因 */}
+                  {/* 提及该股票的理由 */}
                   <div className={`rounded-lg border-l-4 px-3 py-2 ${
                     isBullish ? "border-green-500 bg-green-50" : "border-red-500 bg-red-50"
                   }`}>
@@ -181,12 +229,8 @@ export default async function StockDetailPage({
 
                   {/* 查看原文 */}
                   {tweet.sourceUrl && (
-                    <a
-                      href={tweet.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-xs text-teal-600 hover:underline"
-                    >
+                    <a href={tweet.sourceUrl} target="_blank" rel="noopener noreferrer"
+                      className="block text-xs text-teal-600 hover:underline">
                       查看原文 →
                     </a>
                   )}
