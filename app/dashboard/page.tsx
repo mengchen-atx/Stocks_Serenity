@@ -76,8 +76,8 @@ export default async function DashboardPage() {
         {/* 手机：单列（feed 在上，侧边栏在下）；桌面：双列 */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
 
-          {/* ── 主推文 Feed ── */}
-          <div className="min-w-0 flex-1 space-y-3 sm:space-y-4">
+          {/* ── 主推文 Feed（手机排第二，桌面排第一）── */}
+          <div className="order-2 min-w-0 flex-1 space-y-3 sm:space-y-4 lg:order-1">
             {tweets.length === 0 && (
               <div className="rounded-xl border border-slate-200 bg-white p-12 text-center text-slate-400">
                 暂无推文记录
@@ -204,8 +204,8 @@ export default async function DashboardPage() {
             })}
           </div>
 
-          {/* ── 侧边栏（手机在下，桌面靠右固定）── */}
-          <div className="w-full space-y-4 lg:w-72 lg:flex-shrink-0">
+          {/* ── 侧边栏（手机排第一在上，桌面排第二靠右）── */}
+          <div className="order-1 w-full space-y-4 lg:order-2 lg:w-72 lg:flex-shrink-0">
 
             {/* 统计卡片 */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
