@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type AnalyzeResult = {
   ok?: boolean;
@@ -9,6 +9,149 @@ type AnalyzeResult = {
   pushed?: boolean;
   skipped?: boolean;
   error?: string;
+};
+
+type ChannelInfo = {
+  id: string;
+  slug: string;
+  name: string;
+  subscriberCount?: number;
+  hasAccess?: boolean;
+};
+
+function ChannelAccessManager() {
+  const [channels, setChannels] = useState<ChannelInfo[]>([]);
+  const [lookupUid, setLookupUid] = useState("");
+  const [newUid, setNewUid] = useState("");
+  const [selectedSlug, setSelectedSlug] = useState("");
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [userChannels, setUserChannels] = useState<ChannelInfo[] | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/channel-access")
+      .then((r) => r.json())
+      .then((d) => { setChannels(d.channels ?? []); if (d.channels?.[0]) setSelectedSlug(d.channels[0].slug); })
+      .catch(() => {});
+  }, []);
+
+  async function lookupUser() {
+    if (!lookupUid.trim()) return;
+    setLoading(true);
+    const r = await fetch(`/api/admin/channel-access?uid=${encodeURIComponent(lookupUid.trim())}`);
+    const d = await r.json();
+    setUserChannels(d.channels ?? []);
+    setLoading(false);
+  }
+
+  async function grant() {
+    if (!newUid.trim() || !selectedSlug) return;
+    setLoading(true);
+    const r = await fetch("/api/admin/channel-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: newUid.trim(), channelSlug: selectedSlug }),
+    });
+    const d = await r.json();
+    setMsg(d.ok ? `✅ 已授权 ${newUid.trim()} → ${selectedSlug}` : `❌ ${d.error}`);
+    setLoading(false);
+    if (d.ok) { setNewUid(""); refreshChannels(); if (lookupUid) lookupUser(); }
+  }
+
+  async function revoke(uid: string, slug: string) {
+    setLoading(true);
+    const r = await fetch("/api/admin/channel-access", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid, channelSlug: slug }),
+    });
+    const d = await r.json();
+    setMsg(d.ok ? `✅ 已撤权 ${uid} ← ${slug}` : `❌ ${d.error}`);
+    setLoading(false);
+    if (d.ok) { refreshChannels(); if (lookupUid) lookupUser(); }
+  }
+
+  function refreshChannels() {
+    fetch("/api/admin/channel-access")
+      .then((r) => r.json())
+      .then((d) => setChannels(d.channels ?? []))
+      .catch(() => {});
+  }
+
+  return (
+    <div style={{ marginTop: 40, paddingTop: 32, borderTop: "2px solid #e0e0e0" }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>📡 频道权限管理</h2>
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 20 }}>授权/撤销用户对各频道的访问权限</p>
+
+      {/* 频道总览 */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+        {channels.map((c) => (
+          <div key={c.slug} style={{ padding: "10px 16px", borderRadius: 8, background: "#f5f5f5", border: "1px solid #ddd", minWidth: 140 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
+            <div style={{ color: "#888", fontSize: 12 }}>@{c.slug}</div>
+            <div style={{ color: "#444", fontSize: 13, marginTop: 4 }}>👥 {c.subscriberCount ?? 0} 人</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 查询用户权限 */}
+      <div style={{ marginBottom: 20 }}>
+        <label style={labelStyle}>🔍 查询用户权限（输入 WxPusher UID）</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={lookupUid} onChange={(e) => setLookupUid(e.target.value)} placeholder="UID_xxxxxxxxxxxx"
+            style={{ ...inputStyle, flex: 1 }} onKeyDown={(e) => e.key === "Enter" && lookupUser()} />
+          <button onClick={lookupUser} disabled={loading} style={btnStyle}>查询</button>
+        </div>
+        {userChannels && (
+          <div style={{ marginTop: 12, padding: "12px 14px", background: "#f9f9f9", borderRadius: 8, border: "1px solid #e0e0e0" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>UID: {lookupUid}</div>
+            {userChannels.length === 0 ? (
+              <div style={{ color: "#888", fontSize: 13 }}>无任何频道权限</div>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {userChannels.map((c) => (
+                  <div key={c.slug} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: c.hasAccess ? "#c6f6d5" : "#fed7d7", fontSize: 13 }}>
+                    {c.hasAccess ? "✅" : "❌"} {c.name}
+                    {c.hasAccess && (
+                      <button onClick={() => revoke(lookupUid, c.slug)} style={{ background: "none", border: "none", cursor: "pointer", color: "#742a2a", fontWeight: 700, fontSize: 14, padding: "0 2px" }}>×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 授权表单 */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <label style={labelStyle}>WxPusher UID</label>
+          <input value={newUid} onChange={(e) => setNewUid(e.target.value)} placeholder="UID_xxxxxxxxxxxx" style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>频道</label>
+          <select value={selectedSlug} onChange={(e) => setSelectedSlug(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
+            {channels.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+          </select>
+        </div>
+        <button onClick={grant} disabled={loading || !newUid.trim()} style={{ ...btnStyle, background: "#276749", marginBottom: 0 }}>
+          ✅ 授权
+        </button>
+      </div>
+
+      {msg && (
+        <div style={{ marginTop: 12, padding: "8px 14px", borderRadius: 6, background: msg.startsWith("✅") ? "#c6f6d5" : "#fed7d7", fontSize: 13 }}>
+          {msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const btnStyle: React.CSSProperties = {
+  padding: "10px 18px", background: "#1a1a1a", color: "#fff",
+  border: "none", borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: "pointer",
 };
 
 export function OpsClient() {
@@ -191,6 +334,8 @@ export function OpsClient() {
         .badge-warn  { background: #feebc8; color: #7b341e; }
         .badge-error { background: #fed7d7; color: #742a2a; }
       `}</style>
+
+      <ChannelAccessManager />
     </div>
   );
 }

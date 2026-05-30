@@ -120,6 +120,34 @@ model Subscription {
 
 // ─── Content ──────────────────────────────────────────────────────────────────
 
+// ─── Channels（多频道支持）────────────────────────────────────────────────────
+
+model Channel {
+  id              String   @id @default(cuid())
+  slug            String   @unique   // e.g. "serenity", "leopold"
+  name            String             // e.g. "Serenity", "Leopold Aschenbrenner"
+  description     String?
+  avatarUrl       String?
+  wxpusherTopicId String?            // 该频道对应的 WxPusher 主题 ID
+  createdAt       DateTime @default(now())
+
+  watchUsers  WatchUser[]
+  tweets      Tweet[]
+  userAccess  UserChannelAccess[]
+}
+
+// 用户-频道权限（管理员手动分配）
+model UserChannelAccess {
+  id        String   @id @default(cuid())
+  uid       String   // WxPusher UID
+  channelId String
+  grantedAt DateTime @default(now())
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([uid, channelId])
+  @@index([uid])
+}
+
 model WatchUser {
   id              String   @id @default(cuid())
   username        String   @unique
@@ -128,8 +156,10 @@ model WatchUser {
   includeReplies  Boolean  @default(false)
   includeRetweets Boolean  @default(false)
   lastTweetId     String?
+  channelId       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  channel         Channel? @relation(fields: [channelId], references: [id])
   tweets          Tweet[]
 }
 
@@ -148,13 +178,16 @@ model Tweet {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   watchUserId       String?
+  channelId         String?
   watchUser         WatchUser?   @relation(fields: [watchUserId], references: [id])
+  channel           Channel?     @relation(fields: [channelId], references: [id])
   stockMentions     StockMention[]
   pushLogs          PushLog[]
 
   @@index([authorUsername, tweetCreatedAt])
   @@index([pushed])
   @@index([tweetCreatedAt])
+  @@index([channelId, tweetCreatedAt])
 }
 
 model Stock {

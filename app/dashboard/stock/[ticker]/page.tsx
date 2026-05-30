@@ -71,9 +71,6 @@ export default async function StockDetailPage({
 
   const activeSegmentIds = new Set(profile.segments);
 
-  // 总体多空倾向用于顶部渐变
-  const overallBullish = bullishCount > bearishCount;
-
   return (
     <div className="min-h-screen bg-[#070d1a] text-slate-200">
 

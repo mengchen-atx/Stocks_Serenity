@@ -20,9 +20,10 @@ export type TopMention = {
  */
 export async function getTopMentionedStocks(
   days = 30,
-  limit = 8
+  limit = 8,
+  channelId?: string
 ): Promise<TopMention[]> {
-  return getAllMentionedStocks(days, limit);
+  return getAllMentionedStocks(days, limit, channelId);
 }
 
 /**
@@ -32,13 +33,28 @@ export async function getTopMentionedStocks(
  */
 export async function getAllMentionedStocks(
   days = 30,
-  limit = 9999
+  limit = 9999,
+  channelId?: string
 ): Promise<TopMention[]> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
+  // 如果指定了频道，先找出该频道的 tweet IDs
+  let tweetIdFilter: { in: string[] } | undefined;
+  if (channelId) {
+    const tweetIds = await prisma.tweet.findMany({
+      where: { channelId, tweetCreatedAt: { gte: since } },
+      select: { id: true },
+    });
+    if (tweetIds.length === 0) return [];
+    tweetIdFilter = { in: tweetIds.map((t) => t.id) };
+  }
+
   const rows = await prisma.stockMention.groupBy({
     by: ["stockId", "stance"],
-    where: { createdAt: { gte: since } },
+    where: {
+      createdAt: { gte: since },
+      ...(tweetIdFilter ? { tweetId: tweetIdFilter } : {}),
+    },
     _count: { stockId: true },
     orderBy: { _count: { stockId: "desc" } }
   });
