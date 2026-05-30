@@ -9,8 +9,8 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { sendWxPusherToUids } from "@/lib/wxpusher";
 
-const DASHBOARD_URL = "https://stocks-plum.vercel.app/dashboard";
-const LOGIN_URL = "https://stocks-plum.vercel.app/auth/wxpusher";
+const DASHBOARD_URL = "https://alphaline.fit/dashboard";
+const LOGIN_URL = "https://alphaline.fit/auth/wxpusher";
 
 export async function sendHistoryToSubscriber(uid: string): Promise<void> {
   logger.info({ uid }, "sendHistoryToSubscriber: sending welcome message");
