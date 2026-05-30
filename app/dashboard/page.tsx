@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
-import { getTopMentionedStocks } from "@/lib/insights";
+import { getAllMentionedStocks } from "@/lib/insights";
 import type { AiAnalysis } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +41,7 @@ export default async function DashboardPage() {
         }
       }
     }).catch(() => []),
-    getTopMentionedStocks(30, 15).catch(() => [])
+    getAllMentionedStocks(30).catch(() => [])
   ]);
 
   const total = tweets.length;
@@ -222,15 +222,15 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            {/* 近30天热门股票 */}
+            {/* 近30天全部股票 */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
-                🔥 近30天热门股票
+                📊 近30天提及股票（{topMentions.length} 只）
               </h2>
               {topMentions.length === 0 ? (
                 <p className="text-xs text-slate-400 italic">暂无数据</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
                   {topMentions.map((m, i) => (
                     <div key={m.ticker} className="flex items-center gap-2">
                       {/* 排名 */}
@@ -254,13 +254,13 @@ export default async function DashboardPage() {
                         {m.bullishCount > 0 && (
                           <span className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">
                             <span>📈</span>
-                            <span>利好 {m.bullishCount}次</span>
+                            <span>{m.bullishCount}</span>
                           </span>
                         )}
                         {m.bearishCount > 0 && (
                           <span className="flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
                             <span>📉</span>
-                            <span>利空 {m.bearishCount}次</span>
+                            <span>{m.bearishCount}</span>
                           </span>
                         )}
                       </div>
