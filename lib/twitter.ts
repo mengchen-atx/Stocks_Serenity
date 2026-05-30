@@ -50,28 +50,9 @@ type TwitterTweetsResponse = {
  * - 真实外部链接 -> 替换为 display_url (可读缩略形式，如 example.com/arti...)
  * - 末尾多余空白 -> 修剪掉
  */
-function cleanTweetText(text: string, urlEntities?: UrlEntity[]): string {
-  if (!urlEntities || urlEntities.length === 0) return text.trim();
-
-  let cleaned = text;
-  for (const entity of urlEntities) {
-    const isMedia =
-      entity.display_url.startsWith("pic.twitter.com/") ||
-      entity.expanded_url.includes("/photo/") ||
-      entity.expanded_url.includes("/video/") ||
-      entity.expanded_url.startsWith("https://twitter.com/i/") ||
-      entity.expanded_url.startsWith("https://x.com/i/");
-
-    if (isMedia) {
-      cleaned = cleaned.replace(entity.url, "");
-    } else {
-      // 外部链接：用 display_url 替代（如 "example.com/article…"），更易读
-      cleaned = cleaned.replace(entity.url, entity.display_url);
-    }
-  }
-
-  // 清除多余的连续空格和末尾空白
-  return cleaned.replace(/\s{2,}/g, " ").trim();
+function cleanTweetText(text: string): string {
+  // 删除所有 t.co 短链（含媒体链接和外部链接），只保留纯文字正文
+  return text.replace(/https?:\/\/t\.co\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
 // ─── Main fetch ───────────────────────────────────────────────────────────────
@@ -145,13 +126,7 @@ export async function fetchLatestTweets(params: {
 
         // note_tweet.text 是长推文完整正文，优先使用
         const rawText = tweet.note_tweet?.text ?? tweet.text;
-        // 合并两套 URL entities：note_tweet 的（长推文正文用）+ tweet 的（普通/截断版用）
-        // 两者取并集，确保正文里所有 t.co 链接都能被正确替换或删除
-        const urlEntities = [
-          ...(tweet.note_tweet?.entities?.urls ?? []),
-          ...(tweet.entities?.urls ?? [])
-        ];
-        const content = cleanTweetText(rawText, urlEntities);
+        const content = cleanTweetText(rawText);
 
         return {
           tweetId: tweet.id,
