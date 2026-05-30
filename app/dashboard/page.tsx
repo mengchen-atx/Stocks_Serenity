@@ -241,9 +241,6 @@ export default async function DashboardPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <span className="font-mono font-bold text-sm text-slate-800">{m.ticker}</span>
-                        {m.companyName && (
-                          <span className="ml-1 truncate text-xs text-slate-400">{m.companyName}</span>
-                        )}
                       </div>
                       <div className="flex flex-shrink-0 flex-col items-end gap-1">
                         {m.bullishCount > 0 && (
