@@ -130,8 +130,13 @@ export async function fetchLatestTweets(params: {
 
     const pageTweets = (data.data ?? [])
       .filter((tweet) => {
-        if (params.includeRetweets) return true;
-        return !tweet.referenced_tweets?.some((ref) => ref.type === "retweeted");
+        // 过滤转推
+        if (!params.includeRetweets &&
+            tweet.referenced_tweets?.some((ref) => ref.type === "retweeted")) return false;
+        // 二道保险：过滤 reply（正文以 @用户名 开头）
+        // Twitter API exclude=replies 有时漏网，这里兜底
+        if (!params.includeReplies && /^@\w+/.test(tweet.text.trimStart())) return false;
+        return true;
       })
       .map((tweet) => {
         const imageUrls = (tweet.attachments?.media_keys ?? [])
