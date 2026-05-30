@@ -12,11 +12,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { waitUntil } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { sendHistoryToSubscriber } from "@/lib/history-sender";
 
 // WxPusher 回调 body 格式（基于官方文档）
 // action: "ADD_TOPIC" = 订阅话题, "DELETE_TOPIC" = 取关话题
@@ -80,24 +78,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, message: "wrong_topic" });
   }
 
-  // 创建（或重置）历史发送任务
-  await prisma.historySendJob.upsert({
-    where: { uid },
-    create: { uid, status: "pending" },
-    update: {
-      status: "pending",
-      sent: 0,
-      total: 0,
-      error: null,
-      doneAt: null,
-      createdAt: new Date()
-    }
-  });
+  logger.info({ uid }, "WxPusher webhook: new subscriber recorded");
 
-  logger.info({ uid }, "WxPusher webhook: history send job created, starting background send");
-
-  // 立即返回 200，后台异步发送历史消息
-  waitUntil(sendHistoryToSubscriber(uid));
-
-  return NextResponse.json({ ok: true, message: "history_send_queued", uid });
+  return NextResponse.json({ ok: true, message: "subscribed", uid });
 }
