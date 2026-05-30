@@ -254,13 +254,13 @@ export default async function DashboardPage() {
                         {m.bullishCount > 0 && (
                           <span className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">
                             <span>📈</span>
-                            <span>{m.bullishCount}</span>
+                            <span>利好 {m.bullishCount}次</span>
                           </span>
                         )}
                         {m.bearishCount > 0 && (
                           <span className="flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
                             <span>📉</span>
-                            <span>{m.bearishCount}</span>
+                            <span>利空 {m.bearishCount}次</span>
                           </span>
                         )}
                       </div>
