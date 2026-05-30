@@ -51,8 +51,11 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
 
       result.fetched += tweets.length;
 
+      // 获取该 WatchUser 对应频道的 wxpusherTopicId
+      const channelTopicId = user.channel?.wxpusherTopicId ?? null;
+
       for (const tweet of tweets) {
-        const handled = await handleTweet(tweet, user.id);
+        const handled = await handleTweet(tweet, user.id, user.channelId ?? undefined, channelTopicId);
         result.analyzed += handled.analyzed ? 1 : 0;
         result.pushed += handled.pushed ? 1 : 0;
         result.skipped += handled.skipped ? 1 : 0;
@@ -93,7 +96,12 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
 
 // ─── Single tweet handler ─────────────────────────────────────────────────────
 
-export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
+export async function handleTweet(
+  tweet: TweetInput,
+  watchUserId?: string,
+  channelId?: string,
+  channelTopicId?: string | null
+) {
   const contentHash = sha256(`${tweet.authorUsername}:${tweet.content}`);
   const existing = await prisma.tweet.findFirst({
     where: { OR: [{ tweetId: tweet.tweetId }, { contentHash }] }
@@ -114,7 +122,8 @@ export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
         sourceUrl: tweet.sourceUrl,
         imageUrls: tweet.imageUrls ?? [],
         tweetCreatedAt: tweet.tweetCreatedAt,
-        watchUserId
+        watchUserId,
+        channelId: channelId ?? null,
       }
     }));
 
@@ -166,7 +175,7 @@ export async function handleTweet(tweet: TweetInput, watchUserId?: string) {
 
     let sent: { ok: boolean; status: number; body: string };
     try {
-      sent = await dispatchChannel(channel, content, tweet, analysis, stocks);
+      sent = await dispatchChannel(channel, content, tweet, analysis, stocks, { channelTopicId });
     } catch (err) {
       logger.error({ err, channel }, "push dispatch failed");
       sent = { ok: false, status: 500, body: String(err) };
@@ -263,7 +272,8 @@ async function dispatchChannel(
   content: string,
   tweet: TweetInput,
   analysis: AiAnalysis,
-  stocks: StockProfile[]
+  stocks: StockProfile[],
+  extra?: { channelTopicId?: string | null }
 ): Promise<{ ok: boolean; status: number; body: string }> {
   switch (channel) {
     case PushChannel.WECHAT_WORK_BOT:
@@ -282,7 +292,8 @@ async function dispatchChannel(
       return sendWxPusherTopic(
         content,
         buildWxPusherSummary(analysis),
-        tweet.sourceUrl
+        tweet.sourceUrl,
+        extra?.channelTopicId
       );
 
     case PushChannel.EMAIL: {
@@ -323,18 +334,24 @@ async function dispatchChannel(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function getEnabledWatchUsers() {
-  const users = await prisma.watchUser.findMany({ where: { enabled: true } });
+  const users = await prisma.watchUser.findMany({
+    where: { enabled: true },
+    include: { channel: { select: { id: true, wxpusherTopicId: true } } }
+  });
   if (users.length > 0) return users;
 
-  return [
-    await prisma.watchUser.create({
-      data: {
-        username: env.TWITTER_USERNAME,
-        includeReplies: env.TWITTER_INCLUDE_REPLIES,
-        includeRetweets: env.TWITTER_INCLUDE_RETWEETS
-      }
-    })
-  ];
+  // 兜底：如果数据库没有 WatchUser，用环境变量创建一个（归入 serenity 频道）
+  const serenity = await prisma.channel.findUnique({ where: { slug: "serenity" } });
+  const created = await prisma.watchUser.create({
+    data: {
+      username: env.TWITTER_USERNAME,
+      includeReplies: env.TWITTER_INCLUDE_REPLIES,
+      includeRetweets: env.TWITTER_INCLUDE_RETWEETS,
+      channelId: serenity?.id ?? null,
+    },
+    include: { channel: { select: { id: true, wxpusherTopicId: true } } }
+  });
+  return [created];
 }
 
 async function upsertMentions(tweetId: string, analysis: AiAnalysis) {

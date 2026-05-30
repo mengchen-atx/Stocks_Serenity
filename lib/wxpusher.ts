@@ -196,10 +196,12 @@ export function buildWxPusherSummary(analysis: AiAnalysis): string {
 export async function sendWxPusherTopic(
   html: string,
   summary: string,
-  sourceUrl?: string | null
+  sourceUrl?: string | null,
+  topicIdOverride?: string | null   // 频道专属主题 ID，不传则用默认
 ): Promise<{ ok: boolean; status: number; body: string }> {
-  if (!env.WXPUSHER_APP_TOKEN || !env.WXPUSHER_TOPIC_ID) {
-    return { ok: false, status: 400, body: "WXPUSHER_APP_TOKEN or WXPUSHER_TOPIC_ID not set" };
+  const topicId = topicIdOverride ?? env.WXPUSHER_TOPIC_ID;
+  if (!env.WXPUSHER_APP_TOKEN || !topicId) {
+    return { ok: false, status: 400, body: "WXPUSHER_APP_TOKEN or topicId not set" };
   }
 
   // ── 1. 发给话题订阅者（verifyPayType:1 只推给付费用户）────────────────────
@@ -208,7 +210,7 @@ export async function sendWxPusherTopic(
     content: html,
     summary,
     contentType: 2,
-    topicIds: [Number(env.WXPUSHER_TOPIC_ID)],
+    topicIds: [Number(topicId)],
     url: sourceUrl ?? undefined,
     verifyPayType: 1
   };
