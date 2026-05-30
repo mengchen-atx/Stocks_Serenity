@@ -227,6 +227,7 @@ export default async function DashboardPage() {
               {topMentions.length === 0 ? (
                 <p className="text-xs italic text-slate-400">暂无数据</p>
               ) : (
+                <>
                 <div className="max-h-64 space-y-2 overflow-y-auto pr-1 lg:max-h-[70vh]">
                   {topMentions.map((m, i) => (
                     <div key={m.ticker} className="flex items-center gap-2">
@@ -259,6 +260,16 @@ export default async function DashboardPage() {
                     </div>
                   ))}
                 </div>
+                <div className="mt-3 flex items-center gap-3 border-t border-slate-100 pt-2">
+                  <span className="flex items-center gap-1 text-xs text-slate-400">
+                    <span>📈</span> 看好
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-slate-400">
+                    <span>📉</span> 看空
+                  </span>
+                  <span className="ml-auto text-xs text-slate-300">次数 = AI 分析次数</span>
+                </div>
+                </>
               )}
             </div>
 
