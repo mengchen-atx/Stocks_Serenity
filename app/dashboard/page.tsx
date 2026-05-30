@@ -48,7 +48,6 @@ export default async function DashboardPage() {
   ]);
 
   const total = tweets.length;
-  const pushed = tweets.filter((t) => t.pushed).length;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -60,7 +59,7 @@ export default async function DashboardPage() {
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white text-sm font-bold">S</div>
             <div>
               <h1 className="text-sm font-semibold text-slate-900 sm:text-base">Serenity Intelligence</h1>
-              <p className="text-xs text-slate-500">{total} 条推文 · {pushed} 条已推送</p>
+              <p className="text-xs text-slate-500">{total} 条推文</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -219,21 +218,6 @@ export default async function DashboardPage() {
 
           {/* ── 侧边栏（手机排第一在上，桌面排第二靠右）── */}
           <div className="order-1 w-full space-y-4 lg:order-2 lg:w-72 lg:flex-shrink-0">
-
-            {/* 统计卡片 */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">数据总览</h2>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg bg-slate-50 px-3 py-2 text-center">
-                  <p className="text-xl font-bold text-slate-800">{total}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">归档推文</p>
-                </div>
-                <div className="rounded-lg bg-emerald-50 px-3 py-2 text-center">
-                  <p className="text-xl font-bold text-emerald-700">{pushed}</p>
-                  <p className="mt-0.5 text-xs text-emerald-600">已推送</p>
-                </div>
-              </div>
-            </div>
 
             {/* 近30天全部股票 */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
