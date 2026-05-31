@@ -146,11 +146,16 @@ export async function POST(request: NextRequest) {
 
   // ── 发送欢迎消息（仅 Serenity 频道，其他频道测试中暂不发） ─────────────────
   if (channelSlug === "serenity") {
-    try {
-      await sendWxPusherToUids([uid], WELCOME_HTML, WELCOME_SUMMARY, "https://alphaline.fit/auth/wxpusher");
+    const sendResult = await sendWxPusherToUids(
+      [uid],
+      WELCOME_HTML,
+      WELCOME_SUMMARY,
+      "https://alphaline.fit/auth/wxpusher"
+    );
+    if (sendResult.ok) {
       logger.info({ uid }, "welcome message sent to paid subscriber");
-    } catch (err) {
-      logger.error({ err, uid }, "failed to send welcome message");
+    } else {
+      logger.error({ uid, status: sendResult.status, body: sendResult.body }, "welcome message send FAILED");
     }
   }
 
