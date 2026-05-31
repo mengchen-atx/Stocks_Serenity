@@ -14,8 +14,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { grantChannelAccess } from "@/lib/channels";
+import { grantChannelAccess, revokeChannelAccess } from "@/lib/channels";
 import { sendWxPusherToUids, fetchTopicSubscribersWithExpiry } from "@/lib/wxpusher";
+import { isAdminUid } from "@/lib/admin";
 
 // ─── 欢迎消息（仅付费主题订阅者） ────────────────────────────────────────────
 
@@ -82,9 +83,28 @@ export async function POST(request: NextRequest) {
 
   logger.info({ action, uid, topicId }, "WxPusher webhook parsed");
 
+  // 取关/退款事件 → 撤销 dashboard 权限（管理员不受影响）
+  if (action.includes("REMOVE") || action.includes("DEL") || action.includes("CANCEL") || action.includes("UNSUB")) {
+    if (uid && !isAdminUid(uid)) {
+      try {
+        const channel = topicId
+          ? await prisma.channel.findFirst({ where: { wxpusherTopicId: String(topicId) } })
+          : null;
+        if (channel) {
+          await revokeChannelAccess(uid, channel.slug);
+          logger.info({ uid, channelSlug: channel.slug, action }, "unsubscribe: channel access revoked");
+        }
+      } catch (err) {
+        logger.error({ err, uid }, "failed to revoke channel access on unsubscribe");
+      }
+    }
+    return NextResponse.json({ ok: true, message: "unsubscribe_handled" });
+  }
+
   // 只处理订阅事件
   if (!action.includes("ADD")) {
-    return NextResponse.json({ ok: true, message: "unsubscribe_ignored" });
+    logger.info({ action, uid, topicId }, "WxPusher webhook: unhandled action, ignored");
+    return NextResponse.json({ ok: true, message: "action_ignored" });
   }
 
   if (!uid) {

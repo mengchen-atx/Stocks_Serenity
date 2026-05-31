@@ -436,36 +436,56 @@ async function syncWxPusherSubscribers(): Promise<void> {
 
       // 拉取订阅者列表，包含 payEndTime
       const subscribers = await fetchTopicSubscribersWithExpiry(channel.wxpusherTopicId);
-      if (subscribers.length === 0) continue;
 
-      const uids = subscribers.map((s) => s.uid);
+      const now = Date.now();
+      // 有效付费订阅的 UID 集合
+      const paidUidSet = new Set(
+        subscribers
+          .filter((s) => !isAdminUid(s.uid) && s.payEndTime && s.payEndTime > now)
+          .map((s) => s.uid)
+      );
 
-      // 当前已有的授权记录
+      // 当前 DB 里所有非管理员的授权记录（expiresAt 未过期）
       const existing = await prisma.userChannelAccess.findMany({
-        where: { channelId: channel.id, uid: { in: uids } },
+        where: {
+          channelId: channel.id,
+          expiresAt: { not: null },           // null = 永久（管理员），不动
+        },
         select: { uid: true, expiresAt: true },
       });
-      const existingMap = new Map(existing.map((r) => [r.uid, r.expiresAt]));
 
       let grantedCount = 0;
       let renewedCount = 0;
+      let revokedCount = 0;
 
+      // ── 撤销：DB 有记录但 WxPusher 里已退款/过期 ─────────────────────────
+      for (const record of existing) {
+        if (isAdminUid(record.uid)) continue;
+        if (!paidUidSet.has(record.uid)) {
+          // 不在有效付费列表里 → 立即撤权
+          await prisma.userChannelAccess.deleteMany({
+            where: { uid: record.uid, channelId: channel.id },
+          });
+          revokedCount++;
+          logger.info({ uid: record.uid, channel: channel.slug }, "syncWxPusherSubscribers: revoked (refund/expired)");
+        }
+      }
+
+      const existingMap = new Map(existing.map((r) => [r.uid, r.expiresAt]));
+
+      // ── 新增/续费：WxPusher 有效付费但 DB 不存在或 expiresAt 变了 ──────────
       for (const sub of subscribers) {
-        // 跳过管理员 UID：管理员权限永久有效，不由 WxPusher 数据管理
         if (isAdminUid(sub.uid)) continue;
-        // 只处理付费订阅：payEndTime > now
-        if (!sub.payEndTime || sub.payEndTime <= Date.now()) continue;
+        if (!sub.payEndTime || sub.payEndTime <= now) continue;
 
         const expiresAt = new Date(sub.payEndTime);
 
         if (!existingMap.has(sub.uid)) {
-          // 新用户：创建授权记录
           await prisma.userChannelAccess.create({
             data: { uid: sub.uid, channelId: channel.id, expiresAt },
           });
           grantedCount++;
         } else {
-          // 已有记录：若 expiresAt 有变化则更新（续费场景）
           const currentExpiry = existingMap.get(sub.uid);
           if (expiresAt.getTime() !== currentExpiry?.getTime()) {
             await prisma.userChannelAccess.updateMany({
@@ -477,9 +497,9 @@ async function syncWxPusherSubscribers(): Promise<void> {
         }
       }
 
-      if (grantedCount > 0 || renewedCount > 0) {
+      if (grantedCount > 0 || renewedCount > 0 || revokedCount > 0) {
         logger.info(
-          { channel: channel.slug, grantedCount, renewedCount },
+          { channel: channel.slug, grantedCount, renewedCount, revokedCount },
           "syncWxPusherSubscribers: access updated"
         );
       }
