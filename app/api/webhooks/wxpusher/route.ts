@@ -54,8 +54,20 @@ type WxPusherCallback = {
 
 export const dynamic = "force-dynamic";
 
-// GET — 用于验证 URL 是否可达
-export async function GET() {
+/** 验证 URL token，防止伪造请求 */
+function verifyWebhookToken(request: NextRequest): boolean {
+  const secret = process.env.WXPUSHER_WEBHOOK_SECRET;
+  // 未配置 token 时跳过验证（兼容旧部署），建议始终配置
+  if (!secret) return true;
+  const token = request.nextUrl.searchParams.get("token");
+  return token === secret;
+}
+
+// GET — 用于验证 URL 是否可达（WxPusher 配置时会 GET 一次）
+export async function GET(request: NextRequest) {
+  if (!verifyWebhookToken(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   return NextResponse.json({
     ok: true,
     service: "serenity-wxpusher-webhook",
@@ -65,6 +77,12 @@ export async function GET() {
 
 // POST — WxPusher 推送订阅/取关事件
 export async function POST(request: NextRequest) {
+  // 验证 token，拒绝伪造请求
+  if (!verifyWebhookToken(request)) {
+    logger.warn({ ip: request.headers.get("x-forwarded-for") }, "WxPusher webhook: invalid token, rejected");
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   let rawBody: string;
   let payload: WxPusherCallback;
 

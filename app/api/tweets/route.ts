@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUid } from "@/lib/wxpusher-auth";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/tweets
  * Returns recent tweets with AI analysis, supporting pagination and filtering.
+ * Requires a valid WxPusher session cookie (paid subscribers only).
  *
  * Query params:
  *   limit  — number of results (default 20, max 100)
@@ -14,6 +16,12 @@ export const dynamic = "force-dynamic";
  *   author — filter by author username
  */
 export async function GET(request: NextRequest) {
+  // 必须登录（有效 session cookie）才能访问
+  const uid = await getSessionUid();
+  if (!uid) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const params = request.nextUrl.searchParams;
   const limit = Math.min(Number(params.get("limit") ?? 20), 100);
   const cursor = params.get("cursor") ?? undefined;
