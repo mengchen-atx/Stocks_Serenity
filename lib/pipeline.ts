@@ -17,7 +17,9 @@ import { sendEmailAlert } from "@/lib/email";
 import {
   buildWxPusherSummary,
   renderWxPusherHtml,
-  sendWxPusherTopic
+  sendWxPusherTopic,
+  fetchTopicSubscriberUids,
+  fetchTopicSubscribersWithExpiry
 } from "@/lib/wxpusher";
 import { getTopMentionedStocks } from "@/lib/insights";
 import type { TopMention } from "@/lib/insights";
@@ -70,7 +72,10 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
       }
     }
 
-    // ── 安全网：处理卡住的历史发送任务（webhook 超时未完成的） ────────────────
+    // ── 安全网1：同步 WxPusher 订阅者 → 补充因 webhook 丢失未授权的用户 ──────
+    await syncWxPusherSubscribers();
+
+    // ── 安全网2：处理卡住的历史发送任务（webhook 超时未完成的） ────────────────
     await retryPendingHistoryJobs();
 
     await prisma.cronRun.update({
@@ -288,13 +293,20 @@ async function dispatchChannel(
     case PushChannel.TELEGRAM:
       return sendTelegramMessage(content);
 
-    case PushChannel.WXPUSHER:
+    case PushChannel.WXPUSHER: {
+      // extra.channelTopicId === null  → 频道存在但未配置主题，跳过推送
+      // extra.channelTopicId === undefined → 无频道上下文，用全局 env.WXPUSHER_TOPIC_ID
+      // extra.channelTopicId === "xxx" → 推送到指定主题
+      if (extra !== undefined && extra.channelTopicId === null) {
+        return { ok: true, status: 200, body: "no_topic_for_channel_skipped" };
+      }
       return sendWxPusherTopic(
         content,
         buildWxPusherSummary(analysis),
         tweet.sourceUrl,
-        extra?.channelTopicId
+        extra?.channelTopicId ?? undefined
       );
+    }
 
     case PushChannel.EMAIL: {
       // Push to all Pro+ subscribers who have email notifications enabled
@@ -405,6 +417,73 @@ async function logSkipped(
     create: { tweetId, channel, status: PushStatus.SKIPPED, payloadHash, error },
     update: {}
   });
+}
+
+/**
+ * 安全网：每次 cron 运行时，从 WxPusher API 拉取各频道话题的订阅者列表，
+ * 自动为尚未授权的订阅者补充 UserChannelAccess 记录。
+ * 防止 webhook 回调丢失导致用户订阅后进不了 dashboard。
+ */
+async function syncWxPusherSubscribers(): Promise<void> {
+  try {
+    const channels = await prisma.channel.findMany({
+      where: { wxpusherTopicId: { not: null } },
+    });
+
+    for (const channel of channels) {
+      if (!channel.wxpusherTopicId) continue;
+
+      // 拉取订阅者列表，包含 payEndTime
+      const subscribers = await fetchTopicSubscribersWithExpiry(channel.wxpusherTopicId);
+      if (subscribers.length === 0) continue;
+
+      const uids = subscribers.map((s) => s.uid);
+
+      // 当前已有的授权记录
+      const existing = await prisma.userChannelAccess.findMany({
+        where: { channelId: channel.id, uid: { in: uids } },
+        select: { uid: true, expiresAt: true },
+      });
+      const existingMap = new Map(existing.map((r) => [r.uid, r.expiresAt]));
+
+      let grantedCount = 0;
+      let renewedCount = 0;
+
+      for (const sub of subscribers) {
+        // 只处理付费订阅：payEndTime > now
+        if (!sub.payEndTime || sub.payEndTime <= Date.now()) continue;
+
+        const expiresAt = new Date(sub.payEndTime);
+
+        if (!existingMap.has(sub.uid)) {
+          // 新用户：创建授权记录
+          await prisma.userChannelAccess.create({
+            data: { uid: sub.uid, channelId: channel.id, expiresAt },
+          });
+          grantedCount++;
+        } else {
+          // 已有记录：若 expiresAt 有变化则更新（续费场景）
+          const currentExpiry = existingMap.get(sub.uid);
+          if (expiresAt.getTime() !== currentExpiry?.getTime()) {
+            await prisma.userChannelAccess.updateMany({
+              where: { uid: sub.uid, channelId: channel.id },
+              data: { expiresAt },
+            });
+            renewedCount++;
+          }
+        }
+      }
+
+      if (grantedCount > 0 || renewedCount > 0) {
+        logger.info(
+          { channel: channel.slug, grantedCount, renewedCount },
+          "syncWxPusherSubscribers: access updated"
+        );
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "syncWxPusherSubscribers failed");
+  }
 }
 
 /**

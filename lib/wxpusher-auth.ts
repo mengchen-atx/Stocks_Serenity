@@ -64,8 +64,10 @@ type WxUserResponse = {
 
 /**
  * 查询 WxPusher 该 UID 是否为付费订阅用户
- * payEndTime 为未来时间 → 付费有效
- * payEndTime 为 null/0/过期 → 未付费
+ * 检查优先级：
+ *   1. 管理员 UID → 始终有权限
+ *   2. UserChannelAccess 表有记录 → 有权限（管理员手动授权）
+ *   3. WxPusher API payEndTime 未来时间 → 有权限（正式付费订阅）
  *
  * 注意：管理员 UID（WXPUSHER_OWNER_UID）始终返回 true
  */
@@ -74,15 +76,33 @@ export async function checkWxPusherPayment(uid: string): Promise<{
   expiresAt: Date | null;
   isOwner: boolean;
 }> {
-  // 管理员账号始终有权限
+  // 1. 管理员账号始终有权限
   if (env.WXPUSHER_OWNER_UID && uid === env.WXPUSHER_OWNER_UID) {
     return { isPaid: true, expiresAt: null, isOwner: true };
+  }
+
+  // 2. 检查是否已在 UserChannelAccess 表中有未过期的权限
+  try {
+    const now = new Date();
+    const activeAccess = await prisma.userChannelAccess.findFirst({
+      where: {
+        uid,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: { expiresAt: true },
+    });
+    if (activeAccess) {
+      return { isPaid: true, expiresAt: activeAccess.expiresAt, isOwner: false };
+    }
+  } catch {
+    // DB 查询失败时继续走 WxPusher API 路径
   }
 
   if (!env.WXPUSHER_APP_TOKEN) {
     return { isPaid: false, expiresAt: null, isOwner: false };
   }
 
+  // 3. 查询 WxPusher API 的付费状态
   try {
     const url = `https://wxpusher.zjiecode.com/api/fun/wxuser/v2?appToken=${env.WXPUSHER_APP_TOKEN}&uid=${encodeURIComponent(uid)}`;
     const res = await fetch(url);

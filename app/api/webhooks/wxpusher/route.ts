@@ -2,13 +2,12 @@
  * WxPusher 订阅回调 Webhook
  *
  * 当用户扫码订阅/取关时，WxPusher 会向此地址发送 POST 请求。
- * 收到"订阅"事件后：
- *   1. 立即返回 200（WxPusher 要求快速响应）
- *   2. 后台异步给该用户发送所有历史分析消息
+ * 只有「付费主题订阅」（payEndTime > now）才授权 dashboard 访问权限和欢迎消息。
+ * 免费的「应用关注」不授权。
  *
  * 在 WxPusher 管理后台配置回调地址：
  *   应用 → 编辑 → 关注/取关回调URL → 填入：
- *   https://your-domain.vercel.app/api/webhooks/wxpusher
+ *   https://www.alphaline.fit/api/webhooks/wxpusher
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,10 +15,33 @@ import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { grantChannelAccess } from "@/lib/channels";
+import { sendWxPusherToUids, fetchTopicSubscribersWithExpiry } from "@/lib/wxpusher";
 
-// WxPusher 回调 body 格式（基于官方文档）
-// action: "ADD_TOPIC" = 订阅话题, "DELETE_TOPIC" = 取关话题
-// 部分版本 action 为小驼峰 "addTopic" / "deleteTopic"
+// ─── 欢迎消息（仅付费主题订阅者） ────────────────────────────────────────────
+
+const WELCOME_HTML = `
+<div style="font-family:sans-serif;max-width:480px;padding:4px 0">
+  <h3 style="margin:0 0 12px;font-size:17px">📊 欢迎加入 Serenity 一手信息（AI 深度解析）</h3>
+  <p style="margin:0 0 12px;line-height:1.6">
+    你已成功订阅！我们实时监控科技投资 Serenity 的推文，AI 深度解读多空逻辑，第一时间推送到你的微信。
+    所有历史分析帖子都在 Dashboard 里，用你的 WxPusher UID 直接登录即可查看：
+  </p>
+  <p style="margin:0 0 16px">
+    <a href="https://alphaline.fit/auth/wxpusher"
+       style="display:inline-block;padding:10px 20px;background:#1a56db;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">
+      👉 点击登录 Dashboard
+    </a>
+  </p>
+  <div style="background:#f5f7fa;border-radius:8px;padding:12px 14px;font-size:13px;color:#444">
+    <strong>💡 如何查看你的 WxPusher UID？</strong><br/>
+    打开 WxPusher App → 底部导航「我的」→ 页面顶部即可看到你的 UID（格式：UID_xxxxxx）
+  </div>
+</div>
+`.trim();
+
+const WELCOME_SUMMARY = "📊 欢迎订阅 Serenity 一手信息（AI 深度解析）";
+
+// WxPusher 回调 body 格式
 type WxPusherCallback = {
   action: string;
   data: {
@@ -31,7 +53,7 @@ type WxPusherCallback = {
 
 export const dynamic = "force-dynamic";
 
-// GET — 用于验证 URL 是否可达（WxPusher ping 或手动测试）
+// GET — 用于验证 URL 是否可达
 export async function GET() {
   return NextResponse.json({
     ok: true,
@@ -51,7 +73,6 @@ export async function POST(request: NextRequest) {
     payload = JSON.parse(rawBody) as WxPusherCallback;
   } catch {
     logger.warn("WxPusher webhook: invalid JSON body");
-    // 还是返回 200，避免 WxPusher 因失败反复重试
     return NextResponse.json({ ok: false, error: "invalid_json" });
   }
 
@@ -62,8 +83,7 @@ export async function POST(request: NextRequest) {
   logger.info({ action, uid, topicId }, "WxPusher webhook parsed");
 
   // 只处理订阅事件
-  const isSubscribe = action.includes("ADD");
-  if (!isSubscribe) {
+  if (!action.includes("ADD")) {
     return NextResponse.json({ ok: true, message: "unsubscribe_ignored" });
   }
 
@@ -72,28 +92,64 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "missing_uid" });
   }
 
-  // 验证是我们自己的话题（如果配置了 WXPUSHER_TOPIC_ID）
+  // 验证是我们自己的话题
   const expectedTopicId = env.WXPUSHER_TOPIC_ID ? Number(env.WXPUSHER_TOPIC_ID) : null;
   if (expectedTopicId !== null && topicId !== undefined && topicId !== expectedTopicId) {
     logger.info({ topicId, expectedTopicId }, "WxPusher webhook: wrong topic, ignored");
     return NextResponse.json({ ok: true, message: "wrong_topic" });
   }
 
-  logger.info({ uid }, "WxPusher webhook: new subscriber recorded");
-
-  // 根据 topicId 自动授权对应频道的 dashboard 访问权限
-  try {
-    const channel = topicId
-      ? await prisma.channel.findFirst({ where: { wxpusherTopicId: String(topicId) } })
-      : await prisma.channel.findUnique({ where: { slug: "serenity" } }); // 兜底给 serenity
-
-    if (channel) {
-      await grantChannelAccess(uid, channel.slug);
-      logger.info({ uid, channelSlug: channel.slug }, "auto-granted channel access on subscribe");
-    }
-  } catch (err) {
-    logger.error({ err, uid }, "failed to auto-grant channel access");
+  // 没有 topicId 的是「应用关注」（免费），不处理
+  if (!topicId) {
+    logger.info({ uid }, "WxPusher webhook: app follow (no topicId), skipped");
+    return NextResponse.json({ ok: true, message: "app_follow_ignored" });
   }
 
-  return NextResponse.json({ ok: true, message: "subscribed", uid });
+  // 查询该用户在此话题的 payEndTime，确认是否是付费订阅
+  let expiresAt: Date | null = null;
+  let isPaidSubscriber = false;
+
+  try {
+    const subs = await fetchTopicSubscribersWithExpiry(String(topicId));
+    const sub = subs.find((s) => s.uid === uid);
+    if (sub?.payEndTime && sub.payEndTime > Date.now()) {
+      expiresAt = new Date(sub.payEndTime);
+      isPaidSubscriber = true;
+    }
+  } catch (err) {
+    logger.error({ err, uid }, "failed to fetch subscriber payEndTime");
+  }
+
+  if (!isPaidSubscriber) {
+    logger.info({ uid, topicId }, "WxPusher webhook: topic subscribe but payEndTime=0, not a paid subscriber, skipped");
+    return NextResponse.json({ ok: true, message: "not_paid_subscriber" });
+  }
+
+  // ── 付费订阅确认 → 授权 dashboard ────────────────────────────────────────
+  let channelSlug: string | null = null;
+  try {
+    const channel = await prisma.channel.findFirst({
+      where: { wxpusherTopicId: String(topicId) }
+    });
+
+    if (channel) {
+      await grantChannelAccess(uid, channel.slug, expiresAt);
+      channelSlug = channel.slug;
+      logger.info({ uid, channelSlug, expiresAt }, "paid subscriber granted dashboard access");
+    }
+  } catch (err) {
+    logger.error({ err, uid }, "failed to grant channel access");
+  }
+
+  // ── 发送欢迎消息（仅 Serenity 频道，其他频道测试中暂不发） ─────────────────
+  if (channelSlug === "serenity") {
+    try {
+      await sendWxPusherToUids([uid], WELCOME_HTML, WELCOME_SUMMARY, "https://alphaline.fit/auth/wxpusher");
+      logger.info({ uid }, "welcome message sent to paid subscriber");
+    } catch (err) {
+      logger.error({ err, uid }, "failed to send welcome message");
+    }
+  }
+
+  return NextResponse.json({ ok: true, message: "paid_subscriber_granted", uid, expiresAt });
 }

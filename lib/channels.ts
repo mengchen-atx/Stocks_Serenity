@@ -12,10 +12,17 @@ export type ChannelInfo = {
   avatarUrl: string | null;
 };
 
-/** 获取指定 UID 有权访问的所有频道，按创建时间排序 */
+/** 获取指定 UID 有权访问的所有频道（过滤已过期），按创建时间排序 */
 export async function getUserChannels(uid: string): Promise<ChannelInfo[]> {
+  const now = new Date();
   const accesses = await prisma.userChannelAccess.findMany({
-    where: { uid },
+    where: {
+      uid,
+      OR: [
+        { expiresAt: null },          // 永久授权
+        { expiresAt: { gt: now } },   // 未到期
+      ],
+    },
     include: { channel: true },
     orderBy: { grantedAt: "asc" },
   });
@@ -28,13 +35,18 @@ export async function getUserChannels(uid: string): Promise<ChannelInfo[]> {
   }));
 }
 
-/** 检查某 UID 是否有权访问指定 slug 的频道，返回频道信息或 null */
+/** 检查某 UID 是否有权访问指定 slug 的频道（过滤已过期），返回频道信息或 null */
 export async function checkChannelAccess(
   uid: string,
   channelSlug: string
 ): Promise<ChannelInfo | null> {
+  const now = new Date();
   const access = await prisma.userChannelAccess.findFirst({
-    where: { uid, channel: { slug: channelSlug } },
+    where: {
+      uid,
+      channel: { slug: channelSlug },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
     include: { channel: true },
   });
   if (!access) return null;
@@ -47,14 +59,18 @@ export async function checkChannelAccess(
   };
 }
 
-/** 授权某 UID 访问某频道（管理员操作） */
-export async function grantChannelAccess(uid: string, channelSlug: string) {
+/** 授权某 UID 访问某频道（管理员操作，默认永久） */
+export async function grantChannelAccess(
+  uid: string,
+  channelSlug: string,
+  expiresAt?: Date | null
+) {
   const channel = await prisma.channel.findUnique({ where: { slug: channelSlug } });
   if (!channel) throw new Error(`Channel not found: ${channelSlug}`);
   return prisma.userChannelAccess.upsert({
     where: { uid_channelId: { uid, channelId: channel.id } },
-    create: { uid, channelId: channel.id },
-    update: {},
+    create: { uid, channelId: channel.id, expiresAt: expiresAt ?? null },
+    update: { expiresAt: expiresAt ?? null }, // 更新到期时间（续费场景）
   });
 }
 

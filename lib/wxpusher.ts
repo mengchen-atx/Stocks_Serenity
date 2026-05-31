@@ -394,3 +394,66 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+// ─── 查询话题订阅者列表 ───────────────────────────────────────────────────────
+
+type WxUserRecord = {
+  uid: string;
+  payEndTime?: number | null;
+};
+
+type WxUserListResponse = {
+  code: number;
+  success: boolean;
+  data?: {
+    records?: WxUserRecord[];
+    total?: number;
+    pageSize?: number;
+    currentPage?: number;
+  };
+};
+
+/**
+ * 拉取指定话题的所有订阅者 UID 列表（自动翻页）
+ * 用于定时同步：补充因 webhook 丢失而未授权的订阅者
+ */
+export async function fetchTopicSubscriberUids(topicId: string): Promise<string[]> {
+  const subs = await fetchTopicSubscribersWithExpiry(topicId);
+  return subs.map((s) => s.uid);
+}
+
+/**
+ * 拉取指定话题的所有订阅者，附带 payEndTime（自动翻页）
+ * 用于同步时设置正确的 expiresAt
+ */
+export async function fetchTopicSubscribersWithExpiry(
+  topicId: string
+): Promise<Array<{ uid: string; payEndTime: number | null }>> {
+  if (!env.WXPUSHER_APP_TOKEN) return [];
+
+  const result: Array<{ uid: string; payEndTime: number | null }> = [];
+  let page = 1;
+  const pageSize = 100;
+
+  while (true) {
+    const url = `https://wxpusher.zjiecode.com/api/fun/wxuser/v2?appToken=${env.WXPUSHER_APP_TOKEN}&topicId=${topicId}&page=${page}&pageSize=${pageSize}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json() as WxUserListResponse;
+      if (!data.success || !data.data?.records?.length) break;
+
+      for (const r of data.data.records) {
+        if (r.uid) result.push({ uid: r.uid, payEndTime: r.payEndTime ?? null });
+      }
+
+      const total = data.data.total ?? 0;
+      if (result.length >= total || data.data.records.length < pageSize) break;
+      page++;
+    } catch {
+      break;
+    }
+  }
+
+  return result;
+}
+
