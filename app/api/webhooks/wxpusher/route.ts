@@ -105,6 +105,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, message: "app_follow_ignored" });
   }
 
+  // 稍等 3 秒，避免 WxPusher API 数据还未更新（付款确认与回调触发存在竞态）
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
   // 查询该用户在此话题的 payEndTime，确认是否是付费订阅
   let expiresAt: Date | null = null;
   let isPaidSubscriber = false;
