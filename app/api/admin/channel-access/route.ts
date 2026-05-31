@@ -8,9 +8,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { grantChannelAccess, revokeChannelAccess, getUserChannels, getAllChannels } from "@/lib/channels";
 import { prisma } from "@/lib/prisma";
+import { isAdminUid } from "@/lib/admin";
 
 function isOwner(uid: string) {
-  return uid === process.env.WXPUSHER_OWNER_UID;
+  return isAdminUid(uid);
 }
 
 // GET：查询所有频道列表 + 指定 UID 的权限（若传 uid 参数）

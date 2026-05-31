@@ -16,6 +16,7 @@
 
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { getAdminUids } from "@/lib/admin";
 import type { TopMention } from "@/lib/insights";
 import type { AiAnalysis, StockProfile } from "@/types";
 
@@ -240,14 +241,15 @@ export async function sendWxPusherTopic(
     lastBody = msg;
   }
 
-  // ── 2. 单独发给 owner UID（不校验付费，管理员始终收到）──────────────────────
-  if (env.WXPUSHER_OWNER_UID) {
-    const ownerPayload: WxPusherPayload = {
+  // ── 2. 单独发给所有管理员 UID（不校验付费，管理员始终收到）────────────────
+  const adminUids = getAdminUids();
+  if (adminUids.length > 0) {
+    const adminPayload: WxPusherPayload = {
       appToken: env.WXPUSHER_APP_TOKEN,
       content: html,
       summary,
       contentType: 2,
-      uids: [env.WXPUSHER_OWNER_UID],
+      uids: adminUids,
       url: sourceUrl ?? undefined
       // 不带 verifyPayType，默认 0（不验证付费）
     };
@@ -255,19 +257,18 @@ export async function sendWxPusherTopic(
       const res = await fetch(WXPUSHER_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ownerPayload)
+        body: JSON.stringify(adminPayload)
       });
       const body = await res.text();
       const json = JSON.parse(body) as WxPusherResponse;
-      // 打印完整响应，方便排查 UID 未收到的原因
-      console.log("[WxPusher owner] 完整响应:", JSON.stringify(json, null, 2));
+      console.log("[WxPusher admin] 完整响应:", JSON.stringify(json, null, 2));
       if (json.success) {
-        logger.info({ uid: env.WXPUSHER_OWNER_UID, data: json.data }, "WxPusher owner pushed");
+        logger.info({ adminUids, data: json.data }, "WxPusher admin pushed");
       } else {
-        logger.warn({ code: json.code, msg: json.msg }, "WxPusher owner error");
+        logger.warn({ code: json.code, msg: json.msg }, "WxPusher admin error");
       }
     } catch (err) {
-      logger.error({ err: err instanceof Error ? err.message : err }, "WxPusher owner send failed");
+      logger.error({ err: err instanceof Error ? err.message : err }, "WxPusher admin send failed");
     }
   }
 

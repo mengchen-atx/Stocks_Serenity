@@ -11,6 +11,7 @@ import { createHmac, randomInt } from "crypto";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
+import { isAdminUid } from "@/lib/admin";
 
 const COOKIE_NAME = "wxpusher_session";
 const SESSION_DAYS = 7;
@@ -76,8 +77,8 @@ export async function checkWxPusherPayment(uid: string): Promise<{
   expiresAt: Date | null;
   isOwner: boolean;
 }> {
-  // 1. 管理员账号始终有权限
-  if (env.WXPUSHER_OWNER_UID && uid === env.WXPUSHER_OWNER_UID) {
+  // 1. 管理员账号始终有权限（支持多个管理员 UID，逗号分隔）
+  if (isAdminUid(uid)) {
     return { isPaid: true, expiresAt: null, isOwner: true };
   }
 

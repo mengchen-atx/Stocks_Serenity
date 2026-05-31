@@ -21,6 +21,7 @@ import {
   fetchTopicSubscriberUids,
   fetchTopicSubscribersWithExpiry
 } from "@/lib/wxpusher";
+import { isAdminUid } from "@/lib/admin";
 import { getTopMentionedStocks } from "@/lib/insights";
 import type { TopMention } from "@/lib/insights";
 import type { AiAnalysis, TweetInput, StockProfile } from "@/types";
@@ -450,6 +451,8 @@ async function syncWxPusherSubscribers(): Promise<void> {
       let renewedCount = 0;
 
       for (const sub of subscribers) {
+        // 跳过管理员 UID：管理员权限永久有效，不由 WxPusher 数据管理
+        if (isAdminUid(sub.uid)) continue;
         // 只处理付费订阅：payEndTime > now
         if (!sub.payEndTime || sub.payEndTime <= Date.now()) continue;
 
