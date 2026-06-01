@@ -321,38 +321,38 @@ export async function sendWxPusherToUids(
 
 /**
  * 渲染「近30天最热提及股票」板块
- * 和 dashboard 一致：利好、利空分行显示，每行附上中文标签
+ * 每支股票一行，和 dashboard 一致：▲看好次数  ▼看空次数，按总次数降序
  */
 function buildTopMentionsHtml(topMentions?: TopMention[]): string {
   if (!topMentions || topMentions.length === 0) return "";
 
-  // 展开为每个 (ticker, stance) 独立一行，按次数降序，最多显示 10 行
-  const lines: Array<{ ticker: string; company: string | null; stance: "bullish" | "bearish"; count: number }> = [];
-  for (const m of topMentions) {
-    if (m.bullishCount > 0) lines.push({ ticker: m.ticker, company: m.companyName, stance: "bullish", count: m.bullishCount });
-    if (m.bearishCount > 0) lines.push({ ticker: m.ticker, company: m.companyName, stance: "bearish", count: m.bearishCount });
-  }
-  lines.sort((a, b) => b.count - a.count);
-  const top = lines.slice(0, 20);
+  // 按总次数降序，最多取 20 支股票，每支一行
+  const top = [...topMentions]
+    .sort((a, b) => b.totalCount - a.totalCount)
+    .slice(0, 10);
 
-  const rows = top.map((line, i) => {
-    const isBullish = line.stance === "bullish";
-    const stanceBadge = isBullish
-      ? `<span style="display:inline-block;padding:1px 7px;border-radius:10px;background:#dcfce7;color:#166534;font-size:11px;font-weight:600;">利好</span>`
-      : `<span style="display:inline-block;padding:1px 7px;border-radius:10px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:600;">利空</span>`;
-    const tickerColor = isBullish ? "#15803d" : "#dc2626";
-    const name = line.company
-      ? `<span style="color:#94a3b8;font-size:11px;margin-left:4px;">${escapeHtml(line.company)}</span>`
+  const rows = top.map((m, i) => {
+    const name = m.companyName
+      ? `<span style="color:#94a3b8;font-size:11px;margin-left:4px;">${escapeHtml(m.companyName)}</span>`
       : "";
+    // 主色：有看好就绿，纯看空才红
+    const tickerColor = m.bullishCount > 0 ? "#15803d" : "#dc2626";
+
+    const bullBadge = m.bullishCount > 0
+      ? `<span style="display:inline-block;padding:1px 6px;border-radius:10px;background:#dcfce7;color:#166534;font-size:11px;font-weight:700;">▲${m.bullishCount}</span>`
+      : "";
+    const bearBadge = m.bearishCount > 0
+      ? `<span style="display:inline-block;padding:1px 6px;border-radius:10px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;margin-left:3px;">▼${m.bearishCount}</span>`
+      : "";
+
     return `
       <tr style="border-bottom:1px solid #f1f5f9;">
         <td style="padding:6px 6px;color:#cbd5e1;font-size:11px;text-align:center;width:20px;">${i + 1}</td>
-        <td style="padding:6px 4px;">${stanceBadge}</td>
         <td style="padding:6px 4px;">
-          <span style="font-family:monospace;font-weight:700;font-size:13px;color:${tickerColor};">${line.ticker}</span>${name}
+          <span style="font-family:monospace;font-weight:700;font-size:13px;color:${tickerColor};">${m.ticker}</span>${name}
         </td>
-        <td style="padding:6px 6px;text-align:right;font-weight:600;font-size:13px;color:#374151;white-space:nowrap;">
-          ${line.count} 次
+        <td style="padding:6px 6px;text-align:right;white-space:nowrap;">
+          ${bullBadge}${bearBadge}
         </td>
       </tr>`;
   }).join("");
@@ -360,7 +360,7 @@ function buildTopMentionsHtml(topMentions?: TopMention[]): string {
   return `
     <div style="margin-top:20px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
       <div style="font-weight:700;font-size:13px;color:#374151;margin-bottom:10px;">
-        📊 近30天最热提及（共 ${top.length} 条信号）
+        📊 近30天最热提及（共 ${top.length} 支股票）
       </div>
       <table style="width:100%;border-collapse:collapse;">
         <tbody>${rows}</tbody>
