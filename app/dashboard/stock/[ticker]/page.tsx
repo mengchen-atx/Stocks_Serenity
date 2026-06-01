@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
 import { generateStockProfile, SUPPLY_CHAIN, type StockAiProfile } from "@/lib/stock-profile";
+import { fetchEarnings } from "@/lib/earnings";
 import type { AiAnalysis } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,20 @@ function formatCST(date: Date): string {
 
 function stripTcoLinks(text: string): string {
   return text.replace(/https?:\/\/t\.co\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString("zh-CN", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+}
+
+function daysUntil(d: Date): string {
+  const diff = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+  if (diff < 0) return `${Math.abs(diff)} 天前`;
+  if (diff === 0) return "今天";
+  if (diff === 1) return "明天";
+  return `${diff} 天后`;
 }
 
 export default async function StockDetailPage({
@@ -52,22 +67,25 @@ export default async function StockDetailPage({
   const bullishCount = mentions.filter((m) => m.stance === "bullish").length;
   const bearishCount = mentions.filter((m) => m.stance === "bearish").length;
 
-  // AI 公司简介（有缓存用缓存，没有则生成并存库）
+  // AI 公司简介 + 财报数据（并行）
   let profile: StockAiProfile;
-  if (stock.aiProfile) {
-    profile = stock.aiProfile as StockAiProfile;
-  } else {
-    const reasons = mentions.map((m) => m.reason).filter(Boolean) as string[];
-    try {
-      profile = await generateStockProfile(upperTicker, stock.companyName, reasons);
-      await prisma.stock.update({
-        where: { ticker: upperTicker },
-        data: { aiProfile: profile }
-      });
-    } catch {
-      profile = { description: "", role: "", segments: [] };
-    }
-  }
+  const [earnings] = await Promise.all([
+    fetchEarnings(upperTicker),
+    (async () => {
+      if (stock.aiProfile) {
+        profile = stock.aiProfile as StockAiProfile;
+        return;
+      }
+      const reasons = mentions.map((m) => m.reason).filter(Boolean) as string[];
+      try {
+        profile = await generateStockProfile(upperTicker, stock.companyName, reasons);
+        await prisma.stock.update({ where: { ticker: upperTicker }, data: { aiProfile: profile } });
+      } catch {
+        profile = { description: "", role: "", segments: [] };
+      }
+    })(),
+  ]);
+  profile ??= { description: "", role: "", segments: [] };
 
   const activeSegmentIds = new Set(profile.segments);
 
@@ -181,6 +199,152 @@ export default async function StockDetailPage({
           <p className="mt-3 text-center text-[10px] text-slate-700 font-mono">
             ← 上游原材料 ············ 下游应用 →
           </p>
+        </div>
+
+        {/* ── 财报 ── */}
+        <div className="rounded-xl border border-slate-800 bg-[#0d1628] p-4 shadow-xl">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            📅 财报
+          </p>
+
+          {earnings ? (
+            <div className="space-y-4">
+              {/* 下次财报 */}
+              {earnings.nextDate && (
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    下次财报
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-sm font-bold text-amber-300">
+                      {fmtDate(earnings.nextDate)}
+                      {earnings.nextDateEnd &&
+                        ` ~ ${fmtDate(earnings.nextDateEnd)}`}
+                    </span>
+                    {earnings.callTime && (
+                      <span className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                        {earnings.callTime === "amc" ? "盘后发布" : "盘前发布"}
+                      </span>
+                    )}
+                    <span className="font-mono text-xs text-slate-500">
+                      {daysUntil(earnings.nextDate)}
+                    </span>
+                  </div>
+                  {earnings.epsEstimate !== null && (
+                    <p className="mt-1 text-xs text-slate-600">
+                      市场 EPS 预期：
+                      <span className="font-mono text-slate-400">
+                        {earnings.epsEstimate >= 0 ? "+" : ""}
+                        {earnings.epsEstimate.toFixed(2)}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* 近期季报 EPS */}
+              {earnings.history.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    近期季报 EPS
+                  </p>
+                  <div className="divide-y divide-slate-800/60 rounded-lg border border-slate-800 overflow-hidden">
+                    {earnings.history.map((q, i) => {
+                      const beat =
+                        q.epsActual !== null &&
+                        q.epsEstimate !== null &&
+                        q.epsActual >= q.epsEstimate;
+                      const miss =
+                        q.epsActual !== null &&
+                        q.epsEstimate !== null &&
+                        q.epsActual < q.epsEstimate;
+                      const surprisePct =
+                        q.surprisePct !== null
+                          ? (q.surprisePct * 100).toFixed(1)
+                          : null;
+                      return (
+                        <div
+                          key={i}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2 text-xs"
+                        >
+                          <span className="w-14 font-mono text-[11px] text-slate-500 flex-shrink-0">
+                            {q.period}
+                          </span>
+                          {q.epsActual !== null && (
+                            <span
+                              className={`font-mono font-bold ${
+                                beat
+                                  ? "text-emerald-400"
+                                  : miss
+                                    ? "text-red-400"
+                                    : "text-slate-300"
+                              }`}
+                            >
+                              {q.epsActual >= 0 ? "+" : ""}
+                              {q.epsActual.toFixed(2)}
+                            </span>
+                          )}
+                          {q.epsEstimate !== null && (
+                            <span className="text-slate-600">
+                              预期 {q.epsEstimate >= 0 ? "+" : ""}
+                              {q.epsEstimate.toFixed(2)}
+                            </span>
+                          )}
+                          {surprisePct !== null && (
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                beat
+                                  ? "bg-emerald-500/10 text-emerald-400"
+                                  : "bg-red-500/10 text-red-400"
+                              }`}
+                            >
+                              {parseFloat(surprisePct) >= 0 ? "+" : ""}
+                              {surprisePct}%
+                            </span>
+                          )}
+                          {q.epsActual === null && (
+                            <span className="text-slate-700 italic">暂无数据</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs italic text-slate-600">
+              财报数据加载中，请直接访问下方链接查看
+            </p>
+          )}
+
+          {/* 固定外部链接（始终显示） */}
+          <div className="mt-4 flex flex-wrap gap-3 border-t border-slate-800 pt-3">
+            <a
+              href={`https://finance.yahoo.com/quote/${upperTicker}/financials/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs font-medium text-teal-500 hover:text-teal-400 hover:underline transition-colors"
+            >
+              Yahoo Finance 财报 →
+            </a>
+            <a
+              href={`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${upperTicker}&type=10-Q&dateb=&owner=include&count=4`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs font-medium text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+            >
+              SEC 10-Q 文件 →
+            </a>
+            <a
+              href={`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${upperTicker}&type=10-K&dateb=&owner=include&count=4`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs font-medium text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+            >
+              SEC 10-K 文件 →
+            </a>
+          </div>
         </div>
 
         {/* ── 推文列表 ── */}
