@@ -87,7 +87,7 @@ export async function getStockProfile(ticker: string): Promise<StockProfile> {
       lastFetchedAt: new Date()
     },
     update: {
-      companyName: merged.company,
+      companyName: merged.company || undefined, // never overwrite existing name with null
       exchange: merged.exchange,
       currency: merged.currency,
       price: merged.price,

@@ -79,7 +79,7 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
       const stock = stockMap.get(sig.ticker);
       return `
         <div style="margin:12px 0;padding:12px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:4px;">
-          <div style="font-weight:bold;font-size:15px;">${i + 1}. ${sig.ticker}（${sig.company || stock?.company || sig.ticker}）</div>
+          <div style="font-weight:bold;font-size:15px;">${i + 1}. ${sig.ticker}（${stock?.company || sig.company || sig.ticker}）</div>
           <div style="color:#166534;font-size:13px;margin-top:6px;">📈 ${sig.reason}</div>
         </div>`;
     })
@@ -91,7 +91,7 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
       const stock = stockMap.get(sig.ticker);
       return `
         <div style="margin:12px 0;padding:12px;background:#fff1f2;border-left:3px solid #ef4444;border-radius:4px;">
-          <div style="font-weight:bold;font-size:15px;">${sig.ticker}（${sig.company || stock?.company || sig.ticker}）</div>
+          <div style="font-weight:bold;font-size:15px;">${sig.ticker}（${stock?.company || sig.company || sig.ticker}）</div>
           <div style="color:#991b1b;font-size:13px;margin-top:6px;">📉 ${sig.reason}</div>
         </div>`;
     })

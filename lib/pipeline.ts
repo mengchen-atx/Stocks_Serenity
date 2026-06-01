@@ -377,7 +377,9 @@ async function upsertMentions(tweetId: string, analysis: AiAnalysis) {
     const stock = await prisma.stock.upsert({
       where: { ticker: signal.ticker },
       create: { ticker: signal.ticker, companyName: signal.company },
-      update: { companyName: signal.company || undefined }
+      // Never overwrite an existing company name with an AI guess.
+      // enrichStocks (Finnhub) is the authoritative source for updates.
+      update: {}
     });
 
     await prisma.stockMention.upsert({
