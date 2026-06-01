@@ -246,6 +246,30 @@ export default async function StockDetailPage({
                 </div>
               )}
 
+              {/* 上次财报 */}
+              {earnings.lastDate && (
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                    上次财报
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-sm text-slate-400">
+                      {fmtDate(earnings.lastDate)}
+                    </span>
+                    {earnings.lastCallTime && (
+                      <span className="rounded border border-slate-700 bg-slate-800/60 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                        {earnings.lastCallTime === "amc" ? "盘后发布"
+                          : earnings.lastCallTime === "bmo" ? "盘前发布"
+                          : "盘中发布"}
+                      </span>
+                    )}
+                    <span className="font-mono text-xs text-slate-600">
+                      {daysUntil(earnings.lastDate)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* 近期季报 EPS */}
               {earnings.history.length > 0 && (
                 <div>

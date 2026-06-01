@@ -18,12 +18,16 @@ export interface QuarterlyEarning {
 }
 
 export interface EarningsData {
-  /** Next confirmed earnings date (ISO date string) */
+  /** Next confirmed earnings date (ISO date string, e.g. "2025-08-15") */
   nextDate: string | null;
   /** "amc" = after market close, "bmo" = before market open, "dmh" = during market hours */
   callTime: "amc" | "bmo" | "dmh" | null;
   /** Consensus EPS estimate for the upcoming quarter */
   epsEstimate: number | null;
+  /** Most recent past earnings release date (ISO date string) */
+  lastDate: string | null;
+  /** Timing of the last earnings release */
+  lastCallTime: "amc" | "bmo" | "dmh" | null;
   /** Most recent quarters, newest first */
   history: QuarterlyEarning[];
 }
@@ -40,9 +44,10 @@ export async function fetchEarnings(ticker: string): Promise<EarningsData | null
 
   const sym = encodeURIComponent(ticker.toUpperCase());
 
-  // Query a 9-month forward window for next earnings
+  // Query -12 months → +9 months: covers both last and next earnings in one call
   const today = new Date();
-  const from = isoDate(today);
+  const todayStr = isoDate(today);
+  const from = isoDate(addMonths(today, -12));
   const to = isoDate(addMonths(today, 9));
 
   const [calData, histData] = await Promise.all([
@@ -58,15 +63,33 @@ export async function fetchEarnings(ticker: string): Promise<EarningsData | null
   let epsEstimate: number | null = null;
 
   const calObj = calData as Record<string, unknown> | null;
-  const upcoming = Array.isArray(calObj?.earningsCalendar)
+  const allEntries = Array.isArray(calObj?.earningsCalendar)
     ? (calObj.earningsCalendar as Record<string, unknown>[])
     : [];
 
-  if (upcoming.length > 0) {
-    const next = upcoming[0]; // already sorted by date asc from Finnhub
+  // Split into past (already released) and upcoming
+  const pastEntries = allEntries.filter(
+    (e) => typeof e.date === "string" && e.date < todayStr,
+  );
+  const futureEntries = allEntries.filter(
+    (e) => typeof e.date === "string" && e.date >= todayStr,
+  );
+
+  // Next earnings: earliest future entry
+  if (futureEntries.length > 0) {
+    const next = futureEntries[0];
     nextDate = typeof next.date === "string" ? next.date : null;
     callTime = normalizeHour(next.hour);
     epsEstimate = toNum(next.epsEstimate);
+  }
+
+  // Last earnings: most recent past entry
+  let lastDate: string | null = null;
+  let lastCallTime: EarningsData["callTime"] = null;
+  if (pastEntries.length > 0) {
+    const last = pastEntries[pastEntries.length - 1]; // sorted asc → last = most recent
+    lastDate = typeof last.date === "string" ? last.date : null;
+    lastCallTime = normalizeHour(last.hour);
   }
 
   // ── History ──────────────────────────────────────────────────────────────
@@ -78,7 +101,7 @@ export async function fetchEarnings(ticker: string): Promise<EarningsData | null
     surprisePct: toNum(h.surprisePercent),
   }));
 
-  return { nextDate, callTime, epsEstimate, history };
+  return { nextDate, callTime, epsEstimate, lastDate, lastCallTime, history };
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
