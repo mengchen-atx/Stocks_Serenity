@@ -23,14 +23,18 @@ function stripTcoLinks(text: string): string {
   return text.replace(/https?:\/\/t\.co\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
-function fmtDate(d: Date): string {
+/** "2025-08-15" → "2025年8月15日" */
+function fmtDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
   return d.toLocaleDateString("zh-CN", {
-    year: "numeric", month: "long", day: "numeric",
+    year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
   });
 }
 
-function daysUntil(d: Date): string {
-  const diff = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+/** "2025-08-15" → "45 天后" / "3 天前" */
+function daysUntil(iso: string): string {
+  const target = new Date(iso + "T12:00:00Z");
+  const diff = Math.ceil((target.getTime() - Date.now()) / 86_400_000);
   if (diff < 0) return `${Math.abs(diff)} 天前`;
   if (diff === 0) return "今天";
   if (diff === 1) return "明天";
@@ -218,12 +222,12 @@ export default async function StockDetailPage({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-bold text-amber-300">
                       {fmtDate(earnings.nextDate)}
-                      {earnings.nextDateEnd &&
-                        ` ~ ${fmtDate(earnings.nextDateEnd)}`}
                     </span>
                     {earnings.callTime && (
                       <span className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-400">
-                        {earnings.callTime === "amc" ? "盘后发布" : "盘前发布"}
+                        {earnings.callTime === "amc" ? "盘后发布"
+                          : earnings.callTime === "bmo" ? "盘前发布"
+                          : "盘中发布"}
                       </span>
                     )}
                     <span className="font-mono text-xs text-slate-500">

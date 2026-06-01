@@ -56,7 +56,7 @@ export default async function ChannelDashboardPage({
   const total = tweets.length;
 
   return (
-    <div className="min-h-screen bg-[#070d1a] text-slate-200">
+    <div className="min-h-screen bg-[#070d1a] text-slate-200 overflow-x-hidden">
 
       {/* ── Header ── */}
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#070d1a]/95 backdrop-blur-md">
@@ -104,14 +104,14 @@ export default async function ChannelDashboardPage({
 
           {/* 频道 Tab 栏（有多个频道才显示） */}
           {userChannels.length > 1 && (
-            <div className="flex gap-1 pb-0">
+            <div className="flex gap-1 overflow-x-auto pb-0 scrollbar-none -mx-4 px-4">
               {userChannels.map((ch) => {
                 const isActive = ch.slug === channelSlug;
                 return (
                   <Link
                     key={ch.slug}
                     href={`/dashboard/${ch.slug}`}
-                    className={`relative px-4 py-2 text-xs font-semibold transition-colors rounded-t-md ${
+                    className={`relative flex-shrink-0 px-3 py-2 text-xs font-semibold transition-colors rounded-t-md whitespace-nowrap ${
                       isActive
                         ? "text-teal-400 bg-slate-900 border border-b-0 border-slate-700"
                         : "text-slate-500 hover:text-slate-300"
