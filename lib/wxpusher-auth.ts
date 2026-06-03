@@ -157,18 +157,42 @@ function decodeCookie(value: string): { uid: string; expiresAt: Date } | null {
   }
 }
 
+export type CookieOptions = {
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "lax" | "strict" | "none";
+  expires: Date;
+  path: string;
+};
+
+/**
+ * 返回 session cookie 的 name / value / options，
+ * 供调用方直接设到 NextResponse 上（兼容移动端 Safari）。
+ */
+export function buildSessionCookie(uid: string): {
+  name: string;
+  value: string;
+  options: CookieOptions;
+} {
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  return {
+    name: COOKIE_NAME,
+    value: encodeCookie(uid, expiresAt),
+    options: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      expires: expiresAt,
+      path: "/",
+    },
+  };
+}
+
 /** 发放 session cookie（登录成功后调用） */
 export async function issueSessionCookie(uid: string): Promise<void> {
-  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  const value = encodeCookie(uid, expiresAt);
+  const { name, value, options } = buildSessionCookie(uid);
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, value, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    expires: expiresAt,
-    path: "/"
-  });
+  cookieStore.set(name, value, options);
 }
 
 /** 清除 session cookie（退出登录） */
