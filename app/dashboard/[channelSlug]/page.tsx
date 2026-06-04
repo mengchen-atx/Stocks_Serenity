@@ -4,6 +4,7 @@ import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
 import { getAllMentionedStocks } from "@/lib/insights";
 import { getUserChannels, checkChannelAccess } from "@/lib/channels";
+import { isAdminUid } from "@/lib/admin";
 import type { AiAnalysis } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -103,6 +104,14 @@ export default async function ChannelDashboardPage({
               >
                 ⬡ Supply Chain
               </Link>
+              {isAdminUid(uid) && (
+                <Link
+                  href="/ops"
+                  className="hidden sm:flex items-center gap-1.5 rounded-md border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                >
+                  ⚙️ 后台
+                </Link>
+              )}
               <form action="/api/auth/wxpusher/logout" method="POST">
                 <button
                   type="submit"
