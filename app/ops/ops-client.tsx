@@ -175,6 +175,7 @@ type ChannelDaysMap = Record<string, number>;
 
 const DAY_OPTIONS = [
   { label: "7 天",  value: 7 },
+  { label: "14 天", value: 14 },
   { label: "30 天", value: 30 },
   { label: "90 天", value: 90 },
   { label: "180 天", value: 180 },
