@@ -181,7 +181,7 @@ export async function handleTweet(
 
     let sent: { ok: boolean; status: number; body: string };
     try {
-      sent = await dispatchChannel(channel, content, tweet, analysis, stocks, { channelTopicId });
+      sent = await dispatchChannel(channel, content, tweet, analysis, stocks, { channelTopicId, channelId });
     } catch (err) {
       logger.error({ err, channel }, "push dispatch failed");
       sent = { ok: false, status: 500, body: String(err) };
@@ -279,7 +279,7 @@ async function dispatchChannel(
   tweet: TweetInput,
   analysis: AiAnalysis,
   stocks: StockProfile[],
-  extra?: { channelTopicId?: string | null }
+  extra?: { channelTopicId?: string | null; channelId?: string | null }
 ): Promise<{ ok: boolean; status: number; body: string }> {
   switch (channel) {
     case PushChannel.WECHAT_WORK_BOT:
@@ -301,12 +301,27 @@ async function dispatchChannel(
       if (extra !== undefined && extra.channelTopicId === null) {
         return { ok: true, status: 200, body: "no_topic_for_channel_skipped" };
       }
-      return sendWxPusherTopic(
+
+      const summary = buildWxPusherSummary(analysis);
+
+      // ── 1. 话题广播（所有付费订阅者）────────────────────────────────────────
+      const topicResult = await sendWxPusherTopic(
         content,
-        buildWxPusherSummary(analysis),
+        summary,
         tweet.sourceUrl,
         extra?.channelTopicId ?? undefined
       );
+
+      // ── 2. 额外发给「手动授权但未订阅话题」的 WxPusher UID ─────────────────
+      await sendManualGrantUids(
+        content,
+        summary,
+        tweet.sourceUrl,
+        extra?.channelId ?? null,
+        extra?.channelTopicId ?? null
+      );
+
+      return topicResult;
     }
 
     case PushChannel.EMAIL: {
@@ -345,6 +360,63 @@ async function dispatchChannel(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * 发给「手动授权但未订阅话题」的 WxPusher UID。
+ *
+ * 逻辑：
+ *   1. 查该频道的所有有效 UserChannelAccess（非 PWD_、非管理员）
+ *   2. 拉取话题订阅者 UID 集合
+ *   3. 只推给「在 DB 里但不在话题订阅列表里」的 UID —— 即手动授权用户
+ */
+async function sendManualGrantUids(
+  html: string,
+  summary: string,
+  sourceUrl: string | null | undefined,
+  channelId: string | null,
+  channelTopicId: string | null
+): Promise<void> {
+  if (!channelId) return; // 无频道上下文，跳过
+
+  try {
+    const now = new Date();
+    // 查该频道所有有效的 WxPusher UID（排除密码用户）
+    const accesses = await prisma.userChannelAccess.findMany({
+      where: {
+        channelId,
+        OR: [
+          { expiresAt: null },             // 永久授权
+          { expiresAt: { gt: now } },      // 未过期
+        ],
+      },
+      select: { uid: true },
+    });
+
+    const dbUids = accesses
+      .map((a) => a.uid)
+      .filter((uid) => !uid.startsWith("PWD_") && !isAdminUid(uid));
+
+    if (dbUids.length === 0) return;
+
+    // 获取话题订阅者（已通过广播收到消息，无需重发）
+    const topicSubscriberSet = new Set<string>();
+    if (channelTopicId) {
+      const subs = await fetchTopicSubscriberUids(channelTopicId).catch(() => []);
+      subs.forEach((uid) => topicSubscriberSet.add(uid));
+    }
+
+    // 只发给不在话题订阅列表里的 UID
+    const extraUids = dbUids.filter((uid) => !topicSubscriberSet.has(uid));
+    if (extraUids.length === 0) return;
+
+    logger.info({ count: extraUids.length, uids: extraUids }, "WxPusher manual-grant push");
+    const { sendWxPusherToUids } = await import("@/lib/wxpusher");
+    await sendWxPusherToUids(extraUids, html, summary, sourceUrl);
+  } catch (err) {
+    // 不影响主推送链路
+    logger.error({ err }, "sendManualGrantUids failed");
+  }
+}
 
 async function getEnabledWatchUsers() {
   const users = await prisma.watchUser.findMany({
