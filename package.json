@@ -27,6 +27,7 @@
     "@prisma/client": "^6.2.1",
     "@vercel/functions": "^3.6.1",
     "clsx": "^2.1.1",
+    "d3": "^7.9.0",
     "date-fns": "^4.1.0",
     "next": "^15.1.4",
     "next-auth": "^4.24.14",
@@ -41,6 +42,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/d3": "^7.4.3",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",

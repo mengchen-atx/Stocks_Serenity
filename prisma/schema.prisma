@@ -255,6 +255,16 @@ model CronRun {
   error      String?
 }
 
+// 账号密码登录用户（不依赖 WxPusher）
+model PasswordUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  uid          String   @unique  // 合成 UID，格式 PWD_xxxx，用于 UserChannelAccess
+  note         String?           // 备注（如客户姓名）
+  createdAt    DateTime @default(now())
+}
+
 // WxPusher UID 登录验证码（10分钟有效）
 model WxPusherOtp {
   id        String   @id @default(cuid())

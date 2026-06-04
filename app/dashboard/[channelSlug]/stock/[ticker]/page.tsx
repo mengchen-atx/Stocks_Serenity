@@ -1,5 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
+import { BackButton } from "./back-button";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
 import { generateStockProfile, SUPPLY_CHAIN, type StockAiProfile } from "@/lib/stock-profile";
@@ -108,12 +109,10 @@ export default async function StockDetailPage({
       {/* ── Header ── */}
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#070d1a]/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-          <Link
-            href={`/dashboard/${channelSlug}`}
-            className="flex items-center gap-1 rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-          >
-            ← {channel.name}
-          </Link>
+          <BackButton
+            fallbackHref={`/dashboard/${channelSlug}`}
+            label={channel.name}
+          />
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="font-mono text-xl font-bold text-white tracking-tight">${upperTicker}</span>
             {stock.companyName && (

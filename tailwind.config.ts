@@ -18,7 +18,16 @@ const config: Config = {
       },
       boxShadow: {
         panel: "0 1px 2px rgba(16, 24, 40, 0.06)"
-      }
+      },
+      keyframes: {
+        "slide-in": {
+          from: { transform: "translateX(100%)", opacity: "0" },
+          to: { transform: "translateX(0)", opacity: "1" },
+        },
+      },
+      animation: {
+        "slide-in": "slide-in 0.18s ease-out",
+      },
     }
   },
   plugins: []

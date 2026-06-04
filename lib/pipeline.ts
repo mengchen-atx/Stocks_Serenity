@@ -463,7 +463,7 @@ async function syncWxPusherSubscribers(): Promise<void> {
       // ── 撤销：DB 有记录但 WxPusher 里已退款/过期 ─────────────────────────
       for (const record of existing) {
         if (isAdminUid(record.uid)) continue;
-        if (record.uid.startsWith("GUEST_")) continue; // 访客账号不走 WxPusher 验证
+        if (record.uid.startsWith("PWD_")) continue;   // 账号密码用户不走 WxPusher 验证
         if (!paidUidSet.has(record.uid)) {
           // 不在有效付费列表里 → 立即撤权
           await prisma.userChannelAccess.deleteMany({
@@ -479,7 +479,7 @@ async function syncWxPusherSubscribers(): Promise<void> {
       // ── 新增/续费：WxPusher 有效付费但 DB 不存在或 expiresAt 变了 ──────────
       for (const sub of subscribers) {
         if (isAdminUid(sub.uid)) continue;
-        if (sub.uid.startsWith("GUEST_")) continue; // 访客账号不走 WxPusher 验证
+        if (sub.uid.startsWith("PWD_")) continue;   // 账号密码用户不走 WxPusher 验证
         if (!sub.payEndTime || sub.payEndTime <= now) continue;
 
         const expiresAt = new Date(sub.payEndTime);

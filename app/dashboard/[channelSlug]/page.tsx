@@ -91,6 +91,18 @@ export default async function ChannelDashboardPage({
                 </span>
                 LIVE
               </span>
+              <Link
+                href="/dashboard/alpha-map"
+                className="hidden sm:flex items-center gap-1.5 rounded-md border border-amber-700/40 px-3 py-1.5 text-xs font-medium text-amber-500/80 hover:border-amber-600 hover:text-amber-400 hover:bg-amber-900/20 transition-colors"
+              >
+                ⬡ Alpha Map
+              </Link>
+              <Link
+                href="/dashboard/supply-chain"
+                className="hidden sm:flex items-center gap-1.5 rounded-md border border-violet-700/40 px-3 py-1.5 text-xs font-medium text-violet-500/80 hover:border-violet-600 hover:text-violet-400 hover:bg-violet-900/20 transition-colors"
+              >
+                ⬡ Supply Chain
+              </Link>
               <form action="/api/auth/wxpusher/logout" method="POST">
                 <button
                   type="submit"
