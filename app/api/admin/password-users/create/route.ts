@@ -95,8 +95,8 @@ export async function POST(req: Request) {
     const expiresAt = entry.days > 0 ? new Date(Date.now() + entry.days * 86400_000) : null;
     await prisma.userChannelAccess.upsert({
       where: { uid_channelId: { uid: newUid, channelId: channel.id } },
-      create: { uid: newUid, channelId: channel.id, expiresAt },
-      update: { expiresAt },
+      create: { uid: newUid, channelId: channel.id, expiresAt, grantedManually: true },
+      update: { expiresAt, grantedManually: true },
     });
     channelResults.push({
       slug: entry.slug,

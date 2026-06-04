@@ -40,8 +40,8 @@ export async function PATCH(req: Request) {
 
   const updated = await prisma.userChannelAccess.upsert({
     where: { uid_channelId: { uid: targetUid, channelId: channel.id } },
-    create: { uid: targetUid, channelId: channel.id, expiresAt },
-    update: { expiresAt },
+    create: { uid: targetUid, channelId: channel.id, expiresAt, grantedManually: true },
+    update: { expiresAt, grantedManually: true },
   });
 
   return NextResponse.json({

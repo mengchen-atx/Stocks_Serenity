@@ -138,12 +138,13 @@ model Channel {
 
 // 用户-频道权限（管理员手动分配）
 model UserChannelAccess {
-  id        String    @id @default(cuid())
-  uid       String    // WxPusher UID
-  channelId String
-  grantedAt DateTime  @default(now())
-  expiresAt DateTime? // null = 永久有效（管理员授权）；有值 = 按订阅到期
-  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  uid            String    // WxPusher UID
+  channelId      String
+  grantedAt      DateTime  @default(now())
+  expiresAt      DateTime? // null = 永久有效；有值 = 到期时间
+  grantedManually Boolean  @default(false) // true = 管理员手动授权，sync 不撤销
+  channel        Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([uid, channelId])
   @@index([uid])

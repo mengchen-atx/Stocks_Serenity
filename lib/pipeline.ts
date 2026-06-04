@@ -369,51 +369,44 @@ async function dispatchChannel(
  *   2. 拉取话题订阅者 UID 集合
  *   3. 只推给「在 DB 里但不在话题订阅列表里」的 UID —— 即手动授权用户
  */
+/**
+ * 发给「手动授权（grantedManually=true）且仍在有效期内」的 WxPusher UID。
+ * 这类用户没有付费订阅话题，话题广播不会覆盖到他们，需单独推送。
+ * 密码用户（PWD_*）和管理员已有其他途径，排除。
+ */
 async function sendManualGrantUids(
   html: string,
   summary: string,
   sourceUrl: string | null | undefined,
   channelId: string | null,
-  channelTopicId: string | null
+  _channelTopicId: string | null   // reserved, unused now
 ): Promise<void> {
-  if (!channelId) return; // 无频道上下文，跳过
+  if (!channelId) return;
 
   try {
     const now = new Date();
-    // 查该频道所有有效的 WxPusher UID（排除密码用户）
     const accesses = await prisma.userChannelAccess.findMany({
       where: {
         channelId,
+        grantedManually: true,
         OR: [
-          { expiresAt: null },             // 永久授权
-          { expiresAt: { gt: now } },      // 未过期
+          { expiresAt: null },          // 永久
+          { expiresAt: { gt: now } },   // 未过期
         ],
       },
       select: { uid: true },
     });
 
-    const dbUids = accesses
+    const uids = accesses
       .map((a) => a.uid)
       .filter((uid) => !uid.startsWith("PWD_") && !isAdminUid(uid));
 
-    if (dbUids.length === 0) return;
+    if (uids.length === 0) return;
 
-    // 获取话题订阅者（已通过广播收到消息，无需重发）
-    const topicSubscriberSet = new Set<string>();
-    if (channelTopicId) {
-      const subs = await fetchTopicSubscriberUids(channelTopicId).catch(() => []);
-      subs.forEach((uid) => topicSubscriberSet.add(uid));
-    }
-
-    // 只发给不在话题订阅列表里的 UID
-    const extraUids = dbUids.filter((uid) => !topicSubscriberSet.has(uid));
-    if (extraUids.length === 0) return;
-
-    logger.info({ count: extraUids.length, uids: extraUids }, "WxPusher manual-grant push");
+    logger.info({ count: uids.length, uids }, "WxPusher manual-grant push");
     const { sendWxPusherToUids } = await import("@/lib/wxpusher");
-    await sendWxPusherToUids(extraUids, html, summary, sourceUrl);
+    await sendWxPusherToUids(uids, html, summary, sourceUrl);
   } catch (err) {
-    // 不影响主推送链路
     logger.error({ err }, "sendManualGrantUids failed");
   }
 }
@@ -519,11 +512,12 @@ async function syncWxPusherSubscribers(): Promise<void> {
           .map((s) => s.uid)
       );
 
-      // 当前 DB 里所有非管理员的授权记录（expiresAt 未过期）
+      // 当前 DB 里所有非管理员、非手动授权的付费记录（expiresAt 未过期）
       const existing = await prisma.userChannelAccess.findMany({
         where: {
           channelId: channel.id,
           expiresAt: { not: null },           // null = 永久（管理员），不动
+          grantedManually: false,             // 手动授权记录不参与 WxPusher 同步
         },
         select: { uid: true, expiresAt: true },
       });

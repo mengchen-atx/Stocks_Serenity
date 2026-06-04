@@ -69,8 +69,8 @@ export async function grantChannelAccess(
   if (!channel) throw new Error(`Channel not found: ${channelSlug}`);
   return prisma.userChannelAccess.upsert({
     where: { uid_channelId: { uid, channelId: channel.id } },
-    create: { uid, channelId: channel.id, expiresAt: expiresAt ?? null },
-    update: { expiresAt: expiresAt ?? null }, // 更新到期时间（续费场景）
+    create: { uid, channelId: channel.id, expiresAt: expiresAt ?? null, grantedManually: true },
+    update: { expiresAt: expiresAt ?? null, grantedManually: true },
   });
 }
 
