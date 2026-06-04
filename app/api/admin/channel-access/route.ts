@@ -9,7 +9,7 @@ import { getSessionUid } from "@/lib/wxpusher-auth";
 import { grantChannelAccess, revokeChannelAccess } from "@/lib/channels";
 import { prisma } from "@/lib/prisma";
 import { isAdminUid } from "@/lib/admin";
-import { fetchTopicSubscriberUids } from "@/lib/wxpusher";
+import { fetchTopicSubscribersWithExpiry } from "@/lib/wxpusher";
 
 function isOwner(uid: string) {
   return isAdminUid(uid);
@@ -35,19 +35,27 @@ export async function GET(req: NextRequest) {
     });
     const accessMap = new Map(accesses.map((a) => [a.channel.slug, a]));
 
-    // 是否是 WxPusher 话题付费订阅者（只查有 topicId 的频道）
-    const topicSubscriberSlugs = new Set<string>();
+    // WxPusher 话题付费订阅者 + payEndTime（只查有 topicId 的频道）
+    // slug → payEndTime (ms) | null
+    const topicPayEndMap = new Map<string, number | null>();
     for (const ch of allChannels) {
       if (!ch.wxpusherTopicId) continue;
-      const subs = await fetchTopicSubscriberUids(ch.wxpusherTopicId).catch((): string[] => []);
-      if (subs.includes(targetUid)) topicSubscriberSlugs.add(ch.slug);
+      const subs = await fetchTopicSubscribersWithExpiry(ch.wxpusherTopicId).catch(() => []);
+      const sub = subs.find((s) => s.uid === targetUid);
+      if (sub) topicPayEndMap.set(ch.slug, sub.payEndTime ?? null);
     }
 
     const result = allChannels.map((c) => {
       const access = accessMap.get(c.slug);
       const hasAccess = !!access && (access.expiresAt === null || access.expiresAt > now);
-      const isTopicSubscriber = topicSubscriberSlugs.has(c.slug);
+      const isTopicSubscriber = topicPayEndMap.has(c.slug);
       const canReceivePush = isTopicSubscriber || (hasAccess && !!access?.grantedManually);
+
+      // 推送到期时间：付费订阅用 payEndTime，手动授权用 expiresAt
+      const topicPayEnd = topicPayEndMap.get(c.slug);
+      const pushExpiresAt = isTopicSubscriber
+        ? (topicPayEnd ? new Date(topicPayEnd).toISOString() : null)
+        : (access?.grantedManually ? (access.expiresAt?.toISOString() ?? null) : null);
 
       return {
         id: c.id,
@@ -58,6 +66,7 @@ export async function GET(req: NextRequest) {
         grantedManually: access?.grantedManually ?? false,
         isTopicSubscriber,
         canReceivePush,
+        pushExpiresAt,
       };
     });
 

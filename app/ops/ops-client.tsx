@@ -22,6 +22,7 @@ type ChannelInfo = {
   grantedManually?: boolean;
   isTopicSubscriber?: boolean;
   canReceivePush?: boolean;
+  pushExpiresAt?: string | null;
 };
 
 function ChannelAccessManager() {
@@ -148,13 +149,22 @@ function ChannelAccessManager() {
                         {c.grantedManually && <span style={{ fontSize: 11, background: "#ebf8ff", color: "#2b6cb0", borderRadius: 10, padding: "1px 7px", marginLeft: 4 }}>手动授权</span>}
                       </div>
                       {/* WxPusher 推送 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, flexWrap: "wrap" }}>
                         <span style={{ color: "#555", minWidth: 80 }}>📲 推送</span>
                         {c.canReceivePush
                           ? <span style={{ color: "#276749" }}>✅ 能收到</span>
                           : <span style={{ color: "#999" }}>❌ 收不到</span>}
                         {c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#f0fff4", color: "#276749", borderRadius: 10, padding: "1px 7px" }}>付费订阅</span>}
                         {c.canReceivePush && c.grantedManually && !c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#fef9c3", color: "#744210", borderRadius: 10, padding: "1px 7px" }}>手动推送</span>}
+                        {c.canReceivePush && (() => {
+                          if (!c.pushExpiresAt) return <span style={{ color: "#276749", fontSize: 12 }}>· 永久</span>;
+                          const d = new Date(c.pushExpiresAt);
+                          const days = Math.ceil((d.getTime() - Date.now()) / 86400_000);
+                          if (days < 0) return <span style={{ color: "#e53e3e", fontSize: 12 }}>· 已过期</span>;
+                          return <span style={{ color: days <= 7 ? "#dd6b20" : "#555", fontSize: 12 }}>
+                            · {d.toLocaleDateString("zh-CN")}（剩 {days} 天）
+                          </span>;
+                        })()}
                       </div>
                     </div>
                   );
