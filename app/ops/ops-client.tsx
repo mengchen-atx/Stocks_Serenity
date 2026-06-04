@@ -15,8 +15,13 @@ type ChannelInfo = {
   id: string;
   slug: string;
   name: string;
+  wxpusherTopicId?: string | null;
   subscriberCount?: number;
   hasAccess?: boolean;
+  expiresAt?: string | null;
+  grantedManually?: boolean;
+  isTopicSubscriber?: boolean;
+  canReceivePush?: boolean;
 };
 
 function ChannelAccessManager() {
@@ -105,20 +110,55 @@ function ChannelAccessManager() {
           <button onClick={lookupUser} disabled={loading} style={btnStyle}>查询</button>
         </div>
         {userChannels && (
-          <div style={{ marginTop: 12, padding: "12px 14px", background: "#f9f9f9", borderRadius: 8, border: "1px solid #e0e0e0" }}>
-            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>UID: {lookupUid}</div>
-            {userChannels.length === 0 ? (
-              <div style={{ color: "#888", fontSize: 13 }}>无任何频道权限</div>
+          <div style={{ marginTop: 12, padding: "16px", background: "#f9f9f9", borderRadius: 8, border: "1px solid #e0e0e0" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: "#1a1a2e" }}>
+              UID: <span style={{ fontFamily: "monospace" }}>{lookupUid}</span>
+            </div>
+            {userChannels.every((c) => !c.hasAccess) ? (
+              <div style={{ color: "#888", fontSize: 13 }}>该用户无任何频道权限</div>
             ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {userChannels.map((c) => (
-                  <div key={c.slug} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: c.hasAccess ? "#c6f6d5" : "#fed7d7", fontSize: 13 }}>
-                    {c.hasAccess ? "✅" : "❌"} {c.name}
-                    {c.hasAccess && (
-                      <button onClick={() => revoke(lookupUid, c.slug)} style={{ background: "none", border: "none", cursor: "pointer", color: "#742a2a", fontWeight: 700, fontSize: 14, padding: "0 2px" }}>×</button>
-                    )}
-                  </div>
-                ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {userChannels.filter((c) => c.hasAccess).map((c) => {
+                  const expiry = c.expiresAt ? new Date(c.expiresAt) : null;
+                  const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400_000) : null;
+                  const expiryLabel = expiry === null
+                    ? <span style={{ color: "#276749", fontWeight: 600 }}>永久</span>
+                    : daysLeft !== null && daysLeft < 0
+                      ? <span style={{ color: "#e53e3e", fontWeight: 600 }}>已过期</span>
+                      : <span style={{ color: daysLeft !== null && daysLeft <= 7 ? "#dd6b20" : "#555" }}>
+                          {expiry.toLocaleDateString("zh-CN")}（剩 {daysLeft} 天）
+                        </span>;
+
+                  return (
+                    <div key={c.slug} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px" }}>
+                      {/* 频道名 + 撤权 */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>📺 {c.name}</span>
+                        <button onClick={() => revoke(lookupUid, c.slug)}
+                          style={{ padding: "3px 10px", background: "none", border: "1px solid #fc8181", color: "#e53e3e", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                          撤权
+                        </button>
+                      </div>
+                      {/* Dashboard 有效期 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 6 }}>
+                        <span style={{ color: "#555", minWidth: 80 }}>🖥 Dashboard</span>
+                        <span style={{ color: "#276749" }}>✅ 有权限</span>
+                        <span style={{ color: "#999", margin: "0 4px" }}>·</span>
+                        {expiryLabel}
+                        {c.grantedManually && <span style={{ fontSize: 11, background: "#ebf8ff", color: "#2b6cb0", borderRadius: 10, padding: "1px 7px", marginLeft: 4 }}>手动授权</span>}
+                      </div>
+                      {/* WxPusher 推送 */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                        <span style={{ color: "#555", minWidth: 80 }}>📲 推送</span>
+                        {c.canReceivePush
+                          ? <span style={{ color: "#276749" }}>✅ 能收到</span>
+                          : <span style={{ color: "#999" }}>❌ 收不到</span>}
+                        {c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#f0fff4", color: "#276749", borderRadius: 10, padding: "1px 7px" }}>付费订阅</span>}
+                        {c.canReceivePush && c.grantedManually && !c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#fef9c3", color: "#744210", borderRadius: 10, padding: "1px 7px" }}>手动推送</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
