@@ -47,11 +47,17 @@ export async function POST(req: NextRequest) {
   const uid = await getSessionUid();
   if (!uid || !isOwner(uid)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { uid: targetUid, channelSlug } = await req.json();
+  const { uid: targetUid, channelSlug, days } = await req.json() as {
+    uid?: string; channelSlug?: string; days?: number;
+  };
   if (!targetUid || !channelSlug) return NextResponse.json({ error: "Missing uid or channelSlug" }, { status: 400 });
 
+  const expiresAt = (days !== undefined && days > 0)
+    ? new Date(Date.now() + days * 86400_000)
+    : null; // 0 或未传 → 永久
+
   try {
-    await grantChannelAccess(targetUid, channelSlug);
+    await grantChannelAccess(targetUid, channelSlug, expiresAt);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 400 });

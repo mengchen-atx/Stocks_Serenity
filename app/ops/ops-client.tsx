@@ -24,6 +24,7 @@ function ChannelAccessManager() {
   const [lookupUid, setLookupUid] = useState("");
   const [newUid, setNewUid] = useState("");
   const [selectedSlug, setSelectedSlug] = useState("");
+  const [grantDays, setGrantDays] = useState(30);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [userChannels, setUserChannels] = useState<ChannelInfo[] | null>(null);
@@ -50,10 +51,11 @@ function ChannelAccessManager() {
     const r = await fetch("/api/admin/channel-access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid: newUid.trim(), channelSlug: selectedSlug }),
+      body: JSON.stringify({ uid: newUid.trim(), channelSlug: selectedSlug, days: grantDays }),
     });
     const d = await r.json();
-    setMsg(d.ok ? `✅ 已授权 ${newUid.trim()} → ${selectedSlug}` : `❌ ${d.error}`);
+    const expiryLabel = grantDays === 0 ? "永久" : `${grantDays} 天`;
+    setMsg(d.ok ? `✅ 已授权 ${newUid.trim()} → ${selectedSlug}（${expiryLabel}）` : `❌ ${d.error}`);
     setLoading(false);
     if (d.ok) { setNewUid(""); refreshChannels(); if (lookupUid) lookupUser(); }
   }
@@ -133,6 +135,12 @@ function ChannelAccessManager() {
           <label style={labelStyle}>频道</label>
           <select value={selectedSlug} onChange={(e) => setSelectedSlug(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
             {channels.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>有效期</label>
+          <select value={grantDays} onChange={(e) => setGrantDays(Number(e.target.value))} style={{ ...inputStyle, width: "auto" }}>
+            {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
         <button onClick={grant} disabled={loading || !newUid.trim()} style={{ ...btnStyle, background: "#276749", marginBottom: 0 }}>
