@@ -43,11 +43,13 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "9px 12px",
   borderRadius: 6,
-  border: `1px solid ${C.border}`,
+  border: "1px solid #334155",
   fontSize: 14,
   boxSizing: "border-box",
   outline: "none",
-  // 颜色由 globals.css #ops-root 规则统一管理
+  background: "#f8fafc",
+  color: "#0f172a",
+  WebkitTextFillColor: "#0f172a",
 };
 
 const btnStyle: React.CSSProperties = {
