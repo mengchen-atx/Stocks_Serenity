@@ -1227,7 +1227,7 @@ export function OpsClient({ uid }: { uid: string }) {
   const resultBorder = result?.error ? "#7f1d1d" : result?.skipped ? "#78350f" : "#166534";
 
   return (
-    <div id="ops-root" style={{ maxWidth: 720, margin: "0 auto", padding: "32px 16px", fontFamily: "system-ui, sans-serif" }}>
+    <div id="ops-root" style={{ maxWidth: 720, margin: "0 auto", padding: "32px 16px", fontFamily: "system-ui, sans-serif", background: C.bg, color: C.text, minHeight: "100vh" }}>
 
       {/* ── 页头 ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>

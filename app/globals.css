@@ -18,7 +18,26 @@ body {
   box-sizing: border-box;
 }
 
-/* ── 后台页面输入框统一深色样式 ──────────────────────────────────────── */
+/* ── 后台页面整体深色基础 ─────────────────────────────────────────────── */
+#ops-root {
+  background: #070d1a !important;
+  color: #e2e8f0 !important;
+}
+
+/* 覆盖 Tailwind base 对 h/p/a 等标签的默认颜色重置 */
+#ops-root h1,
+#ops-root h2,
+#ops-root h3,
+#ops-root p,
+#ops-root span,
+#ops-root div,
+#ops-root td,
+#ops-root th {
+  /* 使用 inherit 让 JS inline style 优先；防止 Tailwind base 把颜色重置为黑 */
+  color: inherit;
+}
+
+/* ── 后台页面输入框统一浅色样式（避免与深色背景打架）──────────────────── */
 #ops-root input,
 #ops-root textarea,
 #ops-root select {
