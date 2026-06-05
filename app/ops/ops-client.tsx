@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 
 // ─── 颜色常量（深色主题）────────────────────────────────────────────────────
 const C = {
@@ -1053,13 +1054,11 @@ export function OpsClient({ uid }: { uid: string }) {
 
       {/* ── 页头 ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-        <a href="/dashboard/serenity"
-          style={{ fontSize: 13, color: C.textMuted, textDecoration: "none", padding: "4px 10px", border: `1px solid ${C.border}`, borderRadius: 6, transition: "color 0.15s" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = C.text)}
-          onMouseLeave={(e) => (e.currentTarget.style.color = C.textMuted)}
+        <Link href="/dashboard/serenity"
+          style={{ fontSize: 13, color: C.textMuted, textDecoration: "none", padding: "4px 10px", border: `1px solid ${C.border}`, borderRadius: 6 }}
         >
           ← 返回 Dashboard
-        </a>
+        </Link>
       </div>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4, color: C.heading }}>
         ⚙️ 后台管理
