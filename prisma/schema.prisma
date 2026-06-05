@@ -146,11 +146,13 @@ model UserChannelAccess {
   grantedManually Boolean   @default(false) // true = 管理员手动授权，sync 不撤销
   pushEnabled     Boolean   @default(false) // 是否开启手动 WxPusher 推送
   pushExpiresAt   DateTime? // 推送到期时间（null = 永久；pushEnabled=false 时忽略）
+  grantedBy       String?   // 操作管理员的 WxPusher UID（用于销售统计）
   channel         Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([uid, channelId])
   @@index([uid])
   @@index([expiresAt])
+  @@index([grantedBy])
 }
 
 model WatchUser {

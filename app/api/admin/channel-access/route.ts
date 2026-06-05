@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
           await grantChannelAccess(targetUid, g.slug, expiresAt, {
             pushEnabled: hasPush,
             pushExpiresAt: hasPush ? pushExpiresAt : undefined,
+            grantedBy: uid,
           });
         } else {
           // Push only — upsert with no dashboard expiry but pushEnabled
@@ -161,11 +162,13 @@ export async function POST(req: NextRequest) {
               grantedManually: true,
               pushEnabled: true,
               pushExpiresAt,
+              grantedBy: uid,
             },
             update: {
               pushEnabled: true,
               pushExpiresAt,
               grantedManually: true,
+              grantedBy: uid,
             },
           });
         }
@@ -189,7 +192,7 @@ export async function POST(req: NextRequest) {
     : null;
 
   try {
-    await grantChannelAccess(targetUid, channelSlug, expiresAt);
+    await grantChannelAccess(targetUid, channelSlug, expiresAt, { grantedBy: uid });
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 400 });
@@ -219,8 +222,8 @@ export async function PATCH(req: NextRequest) {
   try {
     await prisma.userChannelAccess.upsert({
       where: { uid_channelId: { uid: targetUid, channelId: channel.id } },
-      create: { uid: targetUid, channelId: channel.id, grantedManually: true, pushEnabled: true, pushExpiresAt },
-      update: { pushEnabled: true, pushExpiresAt, grantedManually: true },
+      create: { uid: targetUid, channelId: channel.id, grantedManually: true, pushEnabled: true, pushExpiresAt, grantedBy: uid },
+      update: { pushEnabled: true, pushExpiresAt, grantedManually: true, grantedBy: uid },
     });
     return NextResponse.json({ ok: true });
   } catch (e) {

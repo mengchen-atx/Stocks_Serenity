@@ -105,6 +105,24 @@ type ChannelInfo = {
 
 type ChannelGrantRow = { dashboardDays: number | null; pushDays: number | null };
 
+type SalesRecord = {
+  uid: string;
+  channelSlug: string;
+  channelName: string;
+  grantedAt: string;
+  expiresAt: string | null;
+  pushEnabled: boolean;
+};
+
+type AdminSalesStat = {
+  adminUid: string;
+  total: number;
+  uniqueUsers: number;
+  active: number;
+  expired: number;
+  recent: SalesRecord[];
+};
+
 const GRANT_DAY_OPTIONS = [
   { label: "不开启", value: null },
   { label: "7 天",   value: 7 },
@@ -859,6 +877,158 @@ type AccessStat = {
   recent: { path: string; time: string }[];
 };
 
+// ─── SalesSummary ─────────────────────────────────────────────────────────────
+
+function SalesSummary({ currentUid }: { currentUid: string }) {
+  const [stats, setStats] = useState<AdminSalesStat[] | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    const r = await fetch("/api/admin/sales-summary");
+    const d = await r.json();
+    setStats(d.summary ?? []);
+    setLoading(false);
+  }
+
+  function shortUid(uid: string) {
+    if (uid === "unknown") return "未知";
+    return uid.length > 20 ? uid.slice(0, 10) + "…" + uid.slice(-6) : uid;
+  }
+
+  function label(uid: string) {
+    if (uid === currentUid) return "我";
+    if (uid === "unknown") return "历史记录（未追踪）";
+    return shortUid(uid);
+  }
+
+  const statColors = [C.blue, C.orange, C.green, C.yellow];
+
+  return (
+    <div style={sectionStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4, color: C.heading }}>📊 销售统计</h2>
+          <p style={{ color: C.textMuted, fontSize: 13, margin: 0 }}>各管理员手动授权记录汇总</p>
+        </div>
+        <button onClick={load} disabled={loading}
+          style={{ ...btnStyle, background: C.card, border: `1px solid ${C.borderMid}`, color: C.text, fontSize: 13 }}>
+          {loading ? "加载中…" : stats ? "🔄 刷新" : "📥 加载统计"}
+        </button>
+      </div>
+
+      {stats && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {stats.map((s, i) => {
+            const isMe = s.adminUid === currentUid;
+            const color = statColors[i % statColors.length];
+            const isOpen = expanded === s.adminUid;
+
+            return (
+              <div key={s.adminUid} style={{
+                background: C.card,
+                border: `1px solid ${isMe ? color : C.border}`,
+                borderRadius: 10,
+                overflow: "hidden",
+              }}>
+                {/* 头部 */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 16px", borderBottom: isOpen ? `1px solid ${C.border}` : "none",
+                  cursor: "pointer",
+                }} onClick={() => setExpanded(isOpen ? null : s.adminUid)}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: "50%",
+                    background: color + "22", display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 16, flexShrink: 0,
+                  }}>
+                    {isMe ? "👑" : s.adminUid === "unknown" ? "❓" : "👤"}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>
+                      {label(s.adminUid)}
+                      {isMe && <span style={{ fontSize: 11, marginLeft: 6, color: color }}>（当前账号）</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.textMuted, fontFamily: "monospace", marginTop: 2 }}>
+                      {s.adminUid !== "unknown" ? s.adminUid : "grantedBy 为空的历史记录"}
+                    </div>
+                  </div>
+                  {/* 核心数字 */}
+                  <div style={{ display: "flex", gap: 16, flexShrink: 0 }}>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color }}>{s.uniqueUsers}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>独立用户</div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.green }}>{s.active}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>有效</div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.textMuted }}>{s.expired}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>已过期</div>
+                    </div>
+                  </div>
+                  <div style={{ color: C.textMuted, fontSize: 16, flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</div>
+                </div>
+
+                {/* 展开：最近授权记录 */}
+                {isOpen && (
+                  <div style={{ padding: "12px 16px" }}>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>最近 {s.recent.length} 条授权记录</div>
+                    {s.recent.length === 0
+                      ? <div style={{ color: C.textMuted, fontSize: 13 }}>暂无记录</div>
+                      : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {s.recent.map((r, j) => {
+                            const expiry = r.expiresAt ? new Date(r.expiresAt) : null;
+                            const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400_000) : null;
+                            const expired = daysLeft !== null && daysLeft < 0;
+                            return (
+                              <div key={j} style={{
+                                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                                padding: "6px 10px", background: C.cardAlt, borderRadius: 6,
+                                opacity: expired ? 0.6 : 1,
+                              }}>
+                                <span style={{ fontFamily: "monospace", fontSize: 12, color: C.blue, flex: "0 0 auto" }}>
+                                  {r.uid.slice(0, 14)}…
+                                </span>
+                                <span style={{ fontSize: 11, background: C.blueBg, color: C.blue, borderRadius: 10, padding: "1px 7px" }}>
+                                  {r.channelName}
+                                </span>
+                                {r.pushEnabled && (
+                                  <span style={{ fontSize: 11, background: C.greenBg, color: C.green, borderRadius: 10, padding: "1px 7px" }}>
+                                    📲 推送
+                                  </span>
+                                )}
+                                <span style={{ fontSize: 11, color: C.textMuted }}>
+                                  授权于 {new Date(r.grantedAt).toLocaleDateString("zh-CN")}
+                                </span>
+                                {expired
+                                  ? <span style={{ fontSize: 11, color: C.red }}>已过期</span>
+                                  : expiry
+                                    ? <span style={{ fontSize: 11, color: daysLeft! <= 7 ? C.orange : C.textSub }}>
+                                        剩 {daysLeft} 天
+                                      </span>
+                                    : <span style={{ fontSize: 11, color: C.green }}>永久</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AccessLogViewer ──────────────────────────────────────────────────────────
+
 function AccessLogViewer() {
   const [hours, setHours] = useState(24);
   const [stats, setStats] = useState<AccessStat[] | null>(null);
@@ -1142,6 +1312,8 @@ export function OpsClient({ uid }: { uid: string }) {
 
       <ChannelAccessManager />
       <PasswordUserManager />
+      <SalesSummary currentUid={uid} />
+
       <AccessLogViewer />
 
     </div>
