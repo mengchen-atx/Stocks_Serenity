@@ -24,8 +24,18 @@ body {
 #ops-root select {
   background: #1e293b !important;
   color: #f1f5f9 !important;
+  -webkit-text-fill-color: #f1f5f9 !important;
   border-color: #334155 !important;
   color-scheme: dark;
+}
+
+/* 自动填充时也保持深色背景 */
+#ops-root input:-webkit-autofill,
+#ops-root input:-webkit-autofill:hover,
+#ops-root input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #1e293b inset !important;
+  -webkit-text-fill-color: #f1f5f9 !important;
+  caret-color: #f1f5f9;
 }
 
 #ops-root input::placeholder,

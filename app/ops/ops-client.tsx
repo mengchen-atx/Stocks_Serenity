@@ -47,9 +47,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14,
   boxSizing: "border-box",
   outline: "none",
-  background: "#1e293b",
-  color: "#f1f5f9",
-  colorScheme: "dark",
+  // 颜色由 globals.css #ops-root 规则统一管理
 };
 
 const btnStyle: React.CSSProperties = {
