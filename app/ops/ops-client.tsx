@@ -47,8 +47,9 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14,
   boxSizing: "border-box",
   outline: "none",
-  background: C.cardAlt,
-  color: C.text,
+  background: "#1e293b",
+  color: "#f1f5f9",
+  colorScheme: "dark",
 };
 
 const btnStyle: React.CSSProperties = {
@@ -1048,7 +1049,7 @@ export function OpsClient({ uid }: { uid: string }) {
   const resultBorder = result?.error ? "#7f1d1d" : result?.skipped ? "#78350f" : "#166534";
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 16px", fontFamily: "system-ui, sans-serif" }}>
+    <div id="ops-root" style={{ maxWidth: 720, margin: "0 auto", padding: "32px 16px", fontFamily: "system-ui, sans-serif" }}>
 
       {/* ── 页头 ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
@@ -1136,6 +1137,28 @@ export function OpsClient({ uid }: { uid: string }) {
       <ChannelAccessManager />
       <PasswordUserManager />
       <AccessLogViewer />
+
+      <style>{`
+        /* 统一所有输入框深色样式 */
+        #ops-root input,
+        #ops-root textarea,
+        #ops-root select {
+          color: #f1f5f9 !important;
+          background: #1e293b !important;
+          border-color: #334155 !important;
+          color-scheme: dark;
+        }
+        #ops-root input::placeholder,
+        #ops-root textarea::placeholder { color: #475569; }
+        #ops-root input:focus,
+        #ops-root textarea:focus,
+        #ops-root select:focus {
+          border-color: #3b82f6 !important;
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(59,130,246,0.25);
+        }
+        #ops-root select option { background: #1e293b; color: #f1f5f9; }
+      `}</style>
     </div>
   );
 }
