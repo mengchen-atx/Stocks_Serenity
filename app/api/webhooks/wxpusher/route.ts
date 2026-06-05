@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { grantChannelAccess, revokeChannelAccess } from "@/lib/channels";
+import { revokeChannelAccess } from "@/lib/channels";
 import { sendWxPusherToUids, fetchTopicSubscribersWithExpiry } from "@/lib/wxpusher";
 import { isAdminUid } from "@/lib/admin";
 
@@ -178,7 +178,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (channel) {
-      await grantChannelAccess(uid, channel.slug, expiresAt);
+      // 用 upsert 直接写，grantedManually=false 表示系统自动授权（webhook）
+      // 这样 syncWxPusherSubscribers 能正常管理到期/续费，避免被误判为手动授权用户
+      // 如果该 UID 已经有手动授权记录（grantedManually=true），只更新 expiresAt，不改动 grantedManually
+      await prisma.userChannelAccess.upsert({
+        where: { uid_channelId: { uid, channelId: channel.id } },
+        create: { uid, channelId: channel.id, expiresAt, grantedManually: false },
+        update: { expiresAt },
+      });
       channelSlug = channel.slug;
       logger.info({ uid, channelSlug, expiresAt }, "paid subscriber granted dashboard access");
     }

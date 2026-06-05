@@ -112,11 +112,18 @@ async function sendToTopic() {
 }
 
 async function sendToManualUsers() {
-  // 只推给 B类用户（grantedManually=true，微信付款手动授权）
+  // 只推给 Serenity 频道的 B类用户（grantedManually=true，微信付款手动授权）
   // 和管理员（expiresAt=null 且 grantedManually=false）
   // A类（WxPusher 主题订阅者）已由话题广播覆盖，不重复推
+  const serenityChannel = await prisma.channel.findUnique({ where: { slug: "serenity" } });
+  if (!serenityChannel) {
+    console.log("⚠️ Serenity 频道未找到，跳过手动用户推送");
+    return { skipped: true };
+  }
+
   const accesses = await prisma.userChannelAccess.findMany({
     where: {
+      channelId: serenityChannel.id,    // ← 只取 Serenity 频道，不跨频道混发
       AND: [
         { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
         {
