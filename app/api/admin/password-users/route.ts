@@ -2,15 +2,22 @@
  * GET  /api/admin/password-users        — 列出所有账号密码用户
  * DELETE /api/admin/password-users      — 删除用户 body: { uid }
  *
- * 仅管理员 session 可访问（由页面层保证）
+ * 仅管理员 session 可访问（server-side 双重校验，不依赖页面层）
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUid } from "@/lib/wxpusher-auth";
+import { isAdminUid } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const uid = await getSessionUid();
+  if (!uid || !isAdminUid(uid)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const users = await prisma.passwordUser.findMany({
     orderBy: { createdAt: "desc" },
   });
@@ -46,7 +53,12 @@ export async function GET() {
   return NextResponse.json({ users: result });
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
+  const sessionUid = await getSessionUid();
+  if (!sessionUid || !isAdminUid(sessionUid)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { uid } = (await req.json()) as { uid?: string };
   if (!uid) return NextResponse.json({ error: "uid required" }, { status: 400 });
 
