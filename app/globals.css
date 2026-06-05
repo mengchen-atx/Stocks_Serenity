@@ -17,3 +17,32 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* ── 后台页面输入框统一深色样式 ──────────────────────────────────────── */
+#ops-root input,
+#ops-root textarea,
+#ops-root select {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+  color-scheme: dark;
+}
+
+#ops-root input::placeholder,
+#ops-root textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1;
+}
+
+#ops-root input:focus,
+#ops-root textarea:focus,
+#ops-root select:focus {
+  border-color: #3b82f6 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
+}
+
+#ops-root select option {
+  background: #1e293b;
+  color: #f1f5f9;
+}
