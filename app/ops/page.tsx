@@ -15,8 +15,8 @@ export default async function OpsPage() {
   if (!isAdminUid(uid)) redirect("/dashboard");
 
   return (
-    <div style={{ minHeight: "100vh", background: "#ffffff", color: "#1a1a1a" }}>
-      <OpsClient />
+    <div style={{ minHeight: "100vh", background: "#070d1a", color: "#e2e8f0" }}>
+      <OpsClient uid={uid} />
     </div>
   );
 }
