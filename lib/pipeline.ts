@@ -17,11 +17,12 @@ import { sendEmailAlert } from "@/lib/email";
 import {
   buildWxPusherSummary,
   renderWxPusherHtml,
-  sendWxPusherTopic,
+  sendWxPusherTopicBroadcast,
+  sendWxPusherToUids,
   fetchTopicSubscriberUids,
   fetchTopicSubscribersWithExpiry
 } from "@/lib/wxpusher";
-import { isAdminUid } from "@/lib/admin";
+import { isAdminUid, getAdminUids } from "@/lib/admin";
 import { getTopMentionedStocks } from "@/lib/insights";
 import type { TopMention } from "@/lib/insights";
 import type { AiAnalysis, TweetInput, StockProfile } from "@/types";
@@ -58,7 +59,7 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
       const channelTopicId = user.channel?.wxpusherTopicId ?? null;
 
       for (const tweet of tweets) {
-        const handled = await handleTweet(tweet, user.id, user.channelId ?? undefined, channelTopicId);
+        const handled = await handleTweet(tweet, user.id, user.channelId ?? undefined, channelTopicId, user.displayName ?? undefined);
         result.analyzed += handled.analyzed ? 1 : 0;
         result.pushed += handled.pushed ? 1 : 0;
         result.skipped += handled.skipped ? 1 : 0;
@@ -106,7 +107,8 @@ export async function handleTweet(
   tweet: TweetInput,
   watchUserId?: string,
   channelId?: string,
-  channelTopicId?: string | null
+  channelTopicId?: string | null,
+  authorDisplayName?: string
 ) {
   const contentHash = sha256(`${tweet.authorUsername}:${tweet.content}`);
   const existing = await prisma.tweet.findFirst({
@@ -171,7 +173,8 @@ export async function handleTweet(
       tweet,
       analysis,
       stocks,
-      topMentions
+      topMentions,
+      authorDisplayName
     });
 
     const alreadySent = await prisma.pushLog.findUnique({
@@ -181,7 +184,7 @@ export async function handleTweet(
 
     let sent: { ok: boolean; status: number; body: string };
     try {
-      sent = await dispatchChannel(channel, content, tweet, analysis, stocks, { channelTopicId, channelId });
+      sent = await dispatchChannel(channel, content, tweet, analysis, stocks, { channelTopicId, channelId, authorDisplayName });
     } catch (err) {
       logger.error({ err, channel }, "push dispatch failed");
       sent = { ok: false, status: 500, body: String(err) };
@@ -209,7 +212,6 @@ export async function handleTweet(
 
   if (sentOk) {
     await prisma.tweet.update({ where: { id: saved.id }, data: { pushed: true } });
-
   }
 
   return { analyzed: !saved.aiAnalysis, pushed: sentOk, skipped: false };
@@ -219,7 +221,7 @@ export async function handleTweet(
 
 function buildChannelPayload(
   channel: PushChannel,
-  params: { tweet: TweetInput; analysis: AiAnalysis; stocks: StockProfile[]; topMentions?: TopMention[] }
+  params: { tweet: TweetInput; analysis: AiAnalysis; stocks: StockProfile[]; topMentions?: TopMention[]; authorDisplayName?: string }
 ): { content: string; payloadHash: string } {
   let content: string;
 
@@ -238,7 +240,7 @@ function buildChannelPayload(
       content = renderWxPusherHtml({
         sourceUrl: params.tweet.sourceUrl,
         original: params.tweet.content,
-        authorUsername: params.tweet.authorUsername,
+        authorUsername: params.authorDisplayName ?? params.tweet.authorUsername,
         tweetCreatedAt: params.tweet.tweetCreatedAt,
         imageUrls: params.tweet.imageUrls,
         analysis: params.analysis,
@@ -279,7 +281,7 @@ async function dispatchChannel(
   tweet: TweetInput,
   analysis: AiAnalysis,
   stocks: StockProfile[],
-  extra?: { channelTopicId?: string | null; channelId?: string | null }
+  extra?: { channelTopicId?: string | null; channelId?: string | null; authorDisplayName?: string }
 ): Promise<{ ok: boolean; status: number; body: string }> {
   switch (channel) {
     case PushChannel.WECHAT_WORK_BOT:
@@ -295,33 +297,39 @@ async function dispatchChannel(
       return sendTelegramMessage(content);
 
     case PushChannel.WXPUSHER: {
-      // extra.channelTopicId === null  → 频道存在但未配置主题，跳过推送
-      // extra.channelTopicId === undefined → 无频道上下文，用全局 env.WXPUSHER_TOPIC_ID
-      // extra.channelTopicId === "xxx" → 推送到指定主题
-      if (extra !== undefined && extra.channelTopicId === null) {
-        return { ok: true, status: 200, body: "no_topic_for_channel_skipped" };
+      const authorName = extra?.authorDisplayName ?? tweet.authorUsername;
+      const summary = buildWxPusherSummary(analysis, authorName);
+      const channelTopicId = extra?.channelTopicId ?? null;
+      const channelId = extra?.channelId ?? null;
+      const adminUids = getAdminUids();
+
+      let sentOk = false;
+
+      // ── A类：话题广播（付费主题订阅者）─────────────────────────────────────
+      // 来源显示为话题名（如「Serenity一手信息」）
+      // verifyPayType:1 让 WxPusher 自动过滤已到期订阅者
+      if (channelTopicId) {
+        const topicResult = await sendWxPusherTopicBroadcast(
+          content, summary, tweet.sourceUrl, channelTopicId
+        );
+        sentOk ||= topicResult.ok;
       }
 
-      const summary = buildWxPusherSummary(analysis);
+      // ── B类：UID 精准推送（手动授权用户 + 管理员）────────────────────────
+      // 来源显示为应用名（如「美股消息推送」）
+      // 有话题的频道只取 grantedManually=true 的用户，避免与 A类重复
+      // 没有话题的频道取所有有效用户
+      const manualUids = await buildManualPushUids(channelId, channelTopicId !== null, adminUids);
+      if (manualUids.length > 0) {
+        const uidResult = await sendWxPusherToUids(manualUids, content, summary, tweet.sourceUrl);
+        sentOk ||= uidResult.ok;
+      }
 
-      // ── 1. 话题广播（所有付费订阅者）────────────────────────────────────────
-      const topicResult = await sendWxPusherTopic(
-        content,
-        summary,
-        tweet.sourceUrl,
-        extra?.channelTopicId ?? undefined
-      );
+      if (!sentOk && !channelTopicId && manualUids.length === 0) {
+        return { ok: true, status: 200, body: "no_recipients" };
+      }
 
-      // ── 2. 额外发给「手动授权但未订阅话题」的 WxPusher UID ─────────────────
-      await sendManualGrantUids(
-        content,
-        summary,
-        tweet.sourceUrl,
-        extra?.channelId ?? null,
-        extra?.channelTopicId ?? null
-      );
-
-      return topicResult;
+      return { ok: sentOk, status: 200, body: "dispatched" };
     }
 
     case PushChannel.EMAIL: {
@@ -362,53 +370,43 @@ async function dispatchChannel(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * 发给「手动授权但未订阅话题」的 WxPusher UID。
+ * 构建 UID 精准推送的收件人列表（B类手动授权用户 + 管理员）。
  *
- * 逻辑：
- *   1. 查该频道的所有有效 UserChannelAccess（非 PWD_、非管理员）
- *   2. 拉取话题订阅者 UID 集合
- *   3. 只推给「在 DB 里但不在话题订阅列表里」的 UID —— 即手动授权用户
+ * 说明：
+ * - A类（WxPusher 话题订阅者）通过 sendWxPusherTopicBroadcast 单独处理，
+ *   由 WxPusher 的 verifyPayType:1 自动过滤到期用户，不在此列。
+ * - 有话题的频道（如 Serenity）：只取 grantedManually=true 的用户，避免与话题广播重复。
+ * - 无话题的频道（如 Jukan/Citrini）：取所有有效授权用户。
+ * - 到期判断：expiresAt 未到期 + pushEnabled=true。
+ * - 管理员 UID 始终加入（不受到期限制）。
+ * - PWD_ 开头的密码用户排除（无法接收 WxPusher 推送）。
  */
-/**
- * 发给「手动授权（grantedManually=true）且仍在有效期内」的 WxPusher UID。
- * 这类用户没有付费订阅话题，话题广播不会覆盖到他们，需单独推送。
- * 密码用户（PWD_*）和管理员已有其他途径，排除。
- */
-async function sendManualGrantUids(
-  html: string,
-  summary: string,
-  sourceUrl: string | null | undefined,
+async function buildManualPushUids(
   channelId: string | null,
-  _channelTopicId: string | null   // reserved, unused now
-): Promise<void> {
-  if (!channelId) return;
+  hasTopicId: boolean,
+  adminUids: string[]
+): Promise<string[]> {
+  const now = new Date();
+  const uidSet = new Set<string>(adminUids);
 
-  try {
-    const now = new Date();
+  if (channelId) {
     const accesses = await prisma.userChannelAccess.findMany({
       where: {
         channelId,
-        grantedManually: true,
-        OR: [
-          { expiresAt: null },          // 永久
-          { expiresAt: { gt: now } },   // 未过期
-        ],
+        pushEnabled: true,
+        // 订阅未到期
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        // 如果频道有话题，只取手动授权用户（A类由话题广播覆盖）
+        ...(hasTopicId ? { grantedManually: true } : {}),
       },
       select: { uid: true },
     });
-
-    const uids = accesses
-      .map((a) => a.uid)
-      .filter((uid) => !uid.startsWith("PWD_") && !isAdminUid(uid));
-
-    if (uids.length === 0) return;
-
-    logger.info({ count: uids.length, uids }, "WxPusher manual-grant push");
-    const { sendWxPusherToUids } = await import("@/lib/wxpusher");
-    await sendWxPusherToUids(uids, html, summary, sourceUrl);
-  } catch (err) {
-    logger.error({ err }, "sendManualGrantUids failed");
+    accesses
+      .filter((a) => !a.uid.startsWith("PWD_"))
+      .forEach((a) => uidSet.add(a.uid));
   }
+
+  return Array.from(uidSet);
 }
 
 async function getEnabledWatchUsers() {

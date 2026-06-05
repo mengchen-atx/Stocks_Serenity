@@ -25,15 +25,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body>
         <SessionProvider>{children}</SessionProvider>
-        <footer style={{
-          textAlign: "center",
-          padding: "12px 16px",
-          fontSize: "11px",
-          color: "#64748b",
-          borderTop: "1px solid #1e293b",
-          background: "#0f172a",
-          letterSpacing: "0.01em",
-        }}>
+        <footer className="text-center px-4 py-3 text-[11px] border-t border-slate-800 bg-[#0f172a] text-slate-500 tracking-wide">
           内容仅用于信息整理和研究辅助，不构成投资建议。
         </footer>
       </body>

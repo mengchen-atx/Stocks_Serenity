@@ -27,11 +27,15 @@ const WELCOME_HTML = `
     你已成功订阅！我们实时监控科技投资 Serenity 的推文，AI 深度解读多空逻辑，第一时间推送到你的微信。
     所有历史分析帖子都在 Dashboard 里，用你的 WxPusher UID 直接登录即可查看：
   </p>
-  <p style="margin:0 0 16px">
+  <p style="margin:0 0 8px">
     <a href="https://alphaline.fit/auth/wxpusher"
        style="display:inline-block;padding:10px 20px;background:#1a56db;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">
       👉 点击登录 Dashboard
     </a>
+  </p>
+  <p style="margin:0 0 16px;font-size:13px;color:#555">
+    或复制链接在浏览器打开：<br/>
+    <span style="font-family:monospace;color:#1a56db;word-break:break-all;">https://alphaline.fit/auth/wxpusher</span>
   </p>
   <div style="background:#f5f7fa;border-radius:8px;padding:12px 14px;font-size:13px;color:#444">
     <strong>💡 如何查看你的 WxPusher UID？</strong><br/>

@@ -204,7 +204,7 @@ async function testWithFakeData() {
   if (process.env.WXPUSHER_APP_TOKEN && process.env.WXPUSHER_TOPIC_ID) {
     console.log("▸ 推送到个人微信（WxPusher）...");
     try {
-      const { renderWxPusherHtml, buildWxPusherSummary, sendWxPusherTopic } =
+      const { renderWxPusherHtml, buildWxPusherSummary, sendWxPusherTopicBroadcast } =
         await import("@/lib/wxpusher");
       const html = renderWxPusherHtml({
         sourceUrl: FAKE_TWEET.sourceUrl,
@@ -214,7 +214,7 @@ async function testWithFakeData() {
         stocks
       });
       const summary = buildWxPusherSummary(analysis);
-      const result = await sendWxPusherTopic(html, summary, FAKE_TWEET.sourceUrl);
+      const result = await sendWxPusherTopicBroadcast(html, summary, FAKE_TWEET.sourceUrl);
       if (result.ok) {
         console.log("✅ WxPusher 推送成功！手机微信应有通知");
         console.log("   Response:", result.body.slice(0, 200));

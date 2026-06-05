@@ -20,25 +20,61 @@ type ChannelInfo = {
   hasAccess?: boolean;
   expiresAt?: string | null;
   grantedManually?: boolean;
+  pushEnabled?: boolean;
   isTopicSubscriber?: boolean;
   canReceivePush?: boolean;
   pushExpiresAt?: string | null;
 };
 
+// days value: null = 不开启, 0 = 永久, >0 = N 天
+type ChannelGrantRow = { dashboardDays: number | null; pushDays: number | null };
+
+const GRANT_DAY_OPTIONS = [
+  { label: "不开启", value: null },
+  { label: "7 天", value: 7 },
+  { label: "14 天", value: 14 },
+  { label: "30 天", value: 30 },
+  { label: "90 天", value: 90 },
+  { label: "180 天", value: 180 },
+  { label: "365 天", value: 365 },
+  { label: "永久", value: 0 },
+];
+
+function ExpiryDisplay({ isoDate, prefix }: { isoDate: string | null | undefined; prefix?: string }) {
+  if (!isoDate) return <span style={{ color: "#276749", fontSize: 12 }}>{prefix}永久</span>;
+  const d = new Date(isoDate);
+  const days = Math.ceil((d.getTime() - Date.now()) / 86400_000);
+  if (days < 0) return <span style={{ color: "#e53e3e", fontSize: 12 }}>{prefix}已过期</span>;
+  return (
+    <span style={{ color: days <= 7 ? "#dd6b20" : "#555", fontSize: 12 }}>
+      {prefix}{d.toLocaleDateString("zh-CN")}（剩 {days} 天）
+    </span>
+  );
+}
+
 function ChannelAccessManager() {
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [lookupUid, setLookupUid] = useState("");
-  const [newUid, setNewUid] = useState("");
-  const [selectedSlug, setSelectedSlug] = useState("");
-  const [grantDays, setGrantDays] = useState(30);
+  const [userChannels, setUserChannels] = useState<ChannelInfo[] | null>(null);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const [userChannels, setUserChannels] = useState<ChannelInfo[] | null>(null);
+
+  // Grant form state
+  const [grantUid, setGrantUid] = useState("");
+  // slug → { dashboardDays, pushDays }
+  const [grantRows, setGrantRows] = useState<Record<string, ChannelGrantRow>>({});
 
   useEffect(() => {
     fetch("/api/admin/channel-access")
       .then((r) => r.json())
-      .then((d) => { setChannels(d.channels ?? []); if (d.channels?.[0]) setSelectedSlug(d.channels[0].slug); })
+      .then((d: { channels?: ChannelInfo[] }) => {
+        const chs = d.channels ?? [];
+        setChannels(chs);
+        // Init grant rows: all 不开启
+        const rows: Record<string, ChannelGrantRow> = {};
+        chs.forEach((c) => { rows[c.slug] = { dashboardDays: null, pushDays: null }; });
+        setGrantRows(rows);
+      })
       .catch(() => {});
   }, []);
 
@@ -51,19 +87,51 @@ function ChannelAccessManager() {
     setLoading(false);
   }
 
-  async function grant() {
-    if (!newUid.trim() || !selectedSlug) return;
+  async function submitGrant() {
+    if (!grantUid.trim()) return;
+    const grants = channels.map((c) => {
+      const row = grantRows[c.slug] ?? { dashboardDays: null, pushDays: null };
+      return { slug: c.slug, dashboardDays: row.dashboardDays, pushDays: row.pushDays };
+    }).filter((g) => g.dashboardDays !== null || g.pushDays !== null);
+
+    if (grants.length === 0) {
+      setMsg("❌ 请至少为一个频道开启 Dashboard 或推送");
+      return;
+    }
+
     setLoading(true);
     const r = await fetch("/api/admin/channel-access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid: newUid.trim(), channelSlug: selectedSlug, days: grantDays }),
+      body: JSON.stringify({ uid: grantUid.trim(), grants }),
     });
     const d = await r.json();
-    const expiryLabel = grantDays === 0 ? "永久" : `${grantDays} 天`;
-    setMsg(d.ok ? `✅ 已授权 ${newUid.trim()} → ${selectedSlug}（${expiryLabel}）` : `❌ ${d.error}`);
+    setMsg(d.ok ? `✅ 已为 ${grantUid.trim()} 配置权限（${grants.length} 个频道）` : `❌ ${d.error}`);
     setLoading(false);
-    if (d.ok) { setNewUid(""); refreshChannels(); if (lookupUid) lookupUser(); }
+    if (d.ok) {
+      setGrantUid("");
+      // Reset rows
+      const rows: Record<string, ChannelGrantRow> = {};
+      channels.forEach((c) => { rows[c.slug] = { dashboardDays: null, pushDays: null }; });
+      setGrantRows(rows);
+      refreshChannels();
+      if (lookupUid) lookupUser();
+    }
+  }
+
+  const [welcomeSent, setWelcomeSent] = useState<Record<string, boolean>>({});
+
+  async function sendWelcome(uid: string) {
+    setLoading(true);
+    const r = await fetch("/api/admin/send-welcome", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid }),
+    });
+    const d = await r.json();
+    setMsg(d.ok ? `✅ 欢迎消息已发送给 ${uid}` : `❌ ${d.error}`);
+    if (d.ok) setWelcomeSent((prev) => ({ ...prev, [uid]: true }));
+    setLoading(false);
   }
 
   async function revoke(uid: string, slug: string) {
@@ -79,17 +147,67 @@ function ChannelAccessManager() {
     if (d.ok) { refreshChannels(); if (lookupUid) lookupUser(); }
   }
 
+  // 内联编辑状态：slug → { dash: boolean, push: boolean }
+  const [editOpen, setEditOpen] = useState<Record<string, { dash?: boolean; push?: boolean }>>({});
+  const [editDays, setEditDays] = useState<Record<string, { dash: number; push: number }>>({});
+
+  function toggleEdit(slug: string, field: "dash" | "push") {
+    setEditOpen((prev) => ({ ...prev, [slug]: { ...prev[slug], [field]: !prev[slug]?.[field] } }));
+    setEditDays((prev) => {
+      const existing = prev[slug] ?? {};
+      return { ...prev, [slug]: { dash: existing.dash ?? 30, push: existing.push ?? 30 } };
+    });
+  }
+
+  async function updateDashExpiry(uid: string, slug: string) {
+    const days = editDays[slug]?.dash ?? 30;
+    setLoading(true);
+    const r = await fetch("/api/admin/channel-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid, channelSlug: slug, days }),
+    });
+    const d = await r.json();
+    const label = days === 0 ? "永久" : `${days} 天`;
+    setMsg(d.ok ? `✅ ${slug} Dashboard → ${label}` : `❌ ${d.error}`);
+    setLoading(false);
+    if (d.ok) { toggleEdit(slug, "dash"); if (lookupUid) lookupUser(); }
+  }
+
+  async function updatePushExpiry(uid: string, slug: string) {
+    const days = editDays[slug]?.push ?? 30;
+    setLoading(true);
+    const r = await fetch("/api/admin/channel-access", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid, channelSlug: slug, pushDays: days }),
+    });
+    const d = await r.json();
+    const label = days === 0 ? "永久" : `${days} 天`;
+    setMsg(d.ok ? `✅ ${slug} 推送 → ${label}` : `❌ ${d.error}`);
+    setLoading(false);
+    if (d.ok) { toggleEdit(slug, "push"); if (lookupUid) lookupUser(); }
+  }
+
   function refreshChannels() {
     fetch("/api/admin/channel-access")
       .then((r) => r.json())
-      .then((d) => setChannels(d.channels ?? []))
+      .then((d: { channels?: ChannelInfo[] }) => setChannels(d.channels ?? []))
       .catch(() => {});
   }
 
+  function updateRow(slug: string, field: keyof ChannelGrantRow, value: number | null) {
+    setGrantRows((prev) => ({ ...prev, [slug]: { ...prev[slug], [field]: value } }));
+  }
+
+  const selectDayStyle: React.CSSProperties = {
+    ...inputStyle, width: "auto", fontSize: 12, padding: "5px 8px",
+  };
+
   return (
     <div style={{ marginTop: 40, paddingTop: 32, borderTop: "2px solid #e0e0e0" }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>📡 频道权限管理</h2>
-      <p style={{ color: "#666", fontSize: 13, marginBottom: 20 }}>授权/撤销用户对各频道的访问权限</p>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>📡 WxPusher UID 权限管理</h2>
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 20 }}>为 WxPusher UID 授权频道 Dashboard 和推送权限（分频道、分项独立设置）</p>
 
       {/* 频道总览 */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
@@ -102,8 +220,8 @@ function ChannelAccessManager() {
         ))}
       </div>
 
-      {/* 查询用户权限 */}
-      <div style={{ marginBottom: 20 }}>
+      {/* ── 查询用户权限 ── */}
+      <div style={{ marginBottom: 28 }}>
         <label style={labelStyle}>🔍 查询用户权限（输入 WxPusher UID）</label>
         <div style={{ display: "flex", gap: 8 }}>
           <input value={lookupUid} onChange={(e) => setLookupUid(e.target.value)} placeholder="UID_xxxxxxxxxxxx"
@@ -112,89 +230,184 @@ function ChannelAccessManager() {
         </div>
         {userChannels && (
           <div style={{ marginTop: 12, padding: "16px", background: "#f9f9f9", borderRadius: 8, border: "1px solid #e0e0e0" }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: "#1a1a2e" }}>
-              UID: <span style={{ fontFamily: "monospace" }}>{lookupUid}</span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#1a1a2e" }}>
+                UID: <span style={{ fontFamily: "monospace" }}>{lookupUid}</span>
+              </div>
+              <button
+                onClick={() => sendWelcome(lookupUid)}
+                disabled={loading || !!welcomeSent[lookupUid]}
+                style={{
+                  padding: "5px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  cursor: welcomeSent[lookupUid] ? "default" : "pointer", border: "none",
+                  background: welcomeSent[lookupUid] ? "#c6f6d5" : "#2563eb",
+                  color: welcomeSent[lookupUid] ? "#276749" : "#fff",
+                }}
+              >
+                {welcomeSent[lookupUid] ? "✅ 已发送" : "📨 发欢迎消息"}
+              </button>
             </div>
-            {userChannels.every((c) => !c.hasAccess) ? (
-              <div style={{ color: "#888", fontSize: 13 }}>该用户无任何频道权限</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {userChannels.filter((c) => c.hasAccess).map((c) => {
-                  const expiry = c.expiresAt ? new Date(c.expiresAt) : null;
-                  const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400_000) : null;
-                  const expiryLabel = expiry === null
-                    ? <span style={{ color: "#276749", fontWeight: 600 }}>永久</span>
-                    : daysLeft !== null && daysLeft < 0
-                      ? <span style={{ color: "#e53e3e", fontWeight: 600 }}>已过期</span>
-                      : <span style={{ color: daysLeft !== null && daysLeft <= 7 ? "#dd6b20" : "#555" }}>
-                          {expiry.toLocaleDateString("zh-CN")}（剩 {daysLeft} 天）
-                        </span>;
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {userChannels.map((c) => {
+                const expiry = c.expiresAt ? new Date(c.expiresAt) : null;
+                const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400_000) : null;
+                const expiryLabel = expiry === null
+                  ? <span style={{ color: "#276749", fontWeight: 600 }}>永久</span>
+                  : daysLeft !== null && daysLeft < 0
+                    ? <span style={{ color: "#e53e3e", fontWeight: 600 }}>已过期</span>
+                    : <span style={{ color: daysLeft !== null && daysLeft <= 7 ? "#dd6b20" : "#555" }}>
+                        {expiry.toLocaleDateString("zh-CN")}（剩 {daysLeft} 天）
+                      </span>;
 
-                  return (
-                    <div key={c.slug} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px" }}>
-                      {/* 频道名 + 撤权 */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                        <span style={{ fontWeight: 700, fontSize: 14 }}>📺 {c.name}</span>
+                const dashOpen = !!editOpen[c.slug]?.dash;
+                const pushOpen = !!editOpen[c.slug]?.push;
+                const curDashDays = editDays[c.slug]?.dash ?? 30;
+                const curPushDays = editDays[c.slug]?.push ?? 30;
+
+                const inlineEditStyle: React.CSSProperties = {
+                  marginTop: 8, display: "flex", gap: 6, alignItems: "center",
+                  padding: "8px 10px", background: "#f0f4ff", borderRadius: 6, border: "1px solid #c3d0f5",
+                };
+
+                return (
+                  <div key={c.slug} style={{
+                    background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px",
+                    opacity: (!c.hasAccess && !c.canReceivePush) ? 0.55 : 1,
+                  }}>
+                    {/* 频道名 + 撤权 */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>📺 {c.name}</span>
+                      {(c.hasAccess || c.canReceivePush) && (
                         <button onClick={() => revoke(lookupUid, c.slug)}
                           style={{ padding: "3px 10px", background: "none", border: "1px solid #fc8181", color: "#e53e3e", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
                           撤权
                         </button>
-                      </div>
-                      {/* Dashboard 有效期 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 6 }}>
-                        <span style={{ color: "#555", minWidth: 80 }}>🖥 Dashboard</span>
-                        <span style={{ color: "#276749" }}>✅ 有权限</span>
-                        <span style={{ color: "#999", margin: "0 4px" }}>·</span>
-                        {expiryLabel}
-                        {c.grantedManually && <span style={{ fontSize: 11, background: "#ebf8ff", color: "#2b6cb0", borderRadius: 10, padding: "1px 7px", marginLeft: 4 }}>手动授权</span>}
-                      </div>
-                      {/* WxPusher 推送 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, flexWrap: "wrap" }}>
-                        <span style={{ color: "#555", minWidth: 80 }}>📲 推送</span>
-                        {c.canReceivePush
-                          ? <span style={{ color: "#276749" }}>✅ 能收到</span>
-                          : <span style={{ color: "#999" }}>❌ 收不到</span>}
-                        {c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#f0fff4", color: "#276749", borderRadius: 10, padding: "1px 7px" }}>付费订阅</span>}
-                        {c.canReceivePush && c.grantedManually && !c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#fef9c3", color: "#744210", borderRadius: 10, padding: "1px 7px" }}>手动推送</span>}
-                        {c.canReceivePush && (() => {
-                          if (!c.pushExpiresAt) return <span style={{ color: "#276749", fontSize: 12 }}>· 永久</span>;
-                          const d = new Date(c.pushExpiresAt);
-                          const days = Math.ceil((d.getTime() - Date.now()) / 86400_000);
-                          if (days < 0) return <span style={{ color: "#e53e3e", fontSize: 12 }}>· 已过期</span>;
-                          return <span style={{ color: days <= 7 ? "#dd6b20" : "#555", fontSize: 12 }}>
-                            · {d.toLocaleDateString("zh-CN")}（剩 {days} 天）
-                          </span>;
-                        })()}
-                      </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+
+                    {/* ── Dashboard 行 ── */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginBottom: 4, flexWrap: "wrap" }}>
+                      <span style={{ color: "#555", minWidth: 80 }}>🖥 Dashboard</span>
+                      {c.hasAccess
+                        ? <><span style={{ color: "#276749" }}>✅ 有权限</span>
+                            <span style={{ color: "#999", margin: "0 4px" }}>·</span>
+                            {expiryLabel}
+                            {c.grantedManually && <span style={{ fontSize: 11, background: "#ebf8ff", color: "#2b6cb0", borderRadius: 10, padding: "1px 7px", marginLeft: 2 }}>手动</span>}
+                          </>
+                        : <span style={{ color: "#bbb" }}>— 未授权</span>}
+                      <button onClick={() => toggleEdit(c.slug, "dash")}
+                        style={{ marginLeft: "auto", padding: "2px 8px", background: dashOpen ? "#e8f0fe" : "none", border: `1px solid ${dashOpen ? "#4a90e2" : "#cbd5e0"}`, color: dashOpen ? "#2563eb" : "#666", borderRadius: 6, fontSize: 11, cursor: "pointer" }}>
+                        {dashOpen ? "收起" : c.hasAccess ? "✏️ 改期" : "＋ 授权"}
+                      </button>
+                    </div>
+                    {dashOpen && (
+                      <div style={inlineEditStyle}>
+                        <select value={curDashDays}
+                          onChange={(e) => setEditDays((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], dash: Number(e.target.value) } }))}
+                          style={{ ...inputStyle, width: "auto", fontSize: 12, padding: "4px 8px" }}>
+                          {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <button onClick={() => updateDashExpiry(lookupUid, c.slug)} disabled={loading}
+                          style={{ padding: "4px 12px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                          确认
+                        </button>
+                        <button onClick={() => toggleEdit(c.slug, "dash")}
+                          style={{ padding: "4px 10px", background: "none", border: "1px solid #ddd", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
+                          取消
+                        </button>
+                      </div>
+                    )}
+
+                    {/* ── 推送行 ── */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, flexWrap: "wrap", marginTop: 4 }}>
+                      <span style={{ color: "#555", minWidth: 80 }}>📲 推送</span>
+                      {c.canReceivePush
+                        ? <span style={{ color: "#276749" }}>✅ 能收到</span>
+                        : <span style={{ color: "#bbb" }}>— 未开启</span>}
+                      {c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#f0fff4", color: "#276749", borderRadius: 10, padding: "1px 7px" }}>付费订阅</span>}
+                      {c.canReceivePush && c.pushEnabled && !c.isTopicSubscriber && <span style={{ fontSize: 11, background: "#fef9c3", color: "#744210", borderRadius: 10, padding: "1px 7px" }}>手动</span>}
+                      {c.canReceivePush && <ExpiryDisplay isoDate={c.pushExpiresAt} prefix="· " />}
+                      <button onClick={() => toggleEdit(c.slug, "push")}
+                        style={{ marginLeft: "auto", padding: "2px 8px", background: pushOpen ? "#f0fdf4" : "none", border: `1px solid ${pushOpen ? "#22c55e" : "#cbd5e0"}`, color: pushOpen ? "#16a34a" : "#666", borderRadius: 6, fontSize: 11, cursor: "pointer" }}>
+                        {pushOpen ? "收起" : c.canReceivePush ? "✏️ 改期" : "＋ 开启"}
+                      </button>
+                    </div>
+                    {pushOpen && (
+                      <div style={inlineEditStyle}>
+                        <select value={curPushDays}
+                          onChange={(e) => setEditDays((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], push: Number(e.target.value) } }))}
+                          style={{ ...inputStyle, width: "auto", fontSize: 12, padding: "4px 8px" }}>
+                          {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <button onClick={() => updatePushExpiry(lookupUid, c.slug)} disabled={loading}
+                          style={{ padding: "4px 12px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                          确认
+                        </button>
+                        <button onClick={() => toggleEdit(c.slug, "push")}
+                          style={{ padding: "4px 10px", background: "none", border: "1px solid #ddd", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
+                          取消
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
 
-      {/* 授权表单 */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
+      {/* ── 授权表单（per-channel）── */}
+      <div style={{ background: "#f9f9f9", border: "1px solid #e0e0e0", borderRadius: 10, padding: "20px" }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, marginTop: 0 }}>✅ 新增授权</h3>
+        <p style={{ color: "#666", fontSize: 12, marginBottom: 16, marginTop: 0 }}>
+          为每个频道分别配置 Dashboard 有效期和推送有效期，选&ldquo;不开启&rdquo;即跳过该项
+        </p>
+
+        <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>WxPusher UID</label>
-          <input value={newUid} onChange={(e) => setNewUid(e.target.value)} placeholder="UID_xxxxxxxxxxxx" style={inputStyle} />
+          <input value={grantUid} onChange={(e) => setGrantUid(e.target.value)}
+            placeholder="UID_xxxxxxxxxxxx" style={{ ...inputStyle, maxWidth: 380 }} />
         </div>
-        <div>
-          <label style={labelStyle}>频道</label>
-          <select value={selectedSlug} onChange={(e) => setSelectedSlug(e.target.value)} style={{ ...inputStyle, width: "auto" }}>
-            {channels.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
-          </select>
+
+        {/* Per-channel rows */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+          {/* Header */}
+          <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#888", fontWeight: 600 }}>频道</span>
+            <span style={{ fontSize: 12, color: "#888", fontWeight: 600 }}>🖥 Dashboard 有效期</span>
+            <span style={{ fontSize: 12, color: "#888", fontWeight: 600 }}>📲 推送有效期</span>
+          </div>
+          {channels.map((c) => {
+            const row = grantRows[c.slug] ?? { dashboardDays: null, pushDays: null };
+            return (
+              <div key={c.slug} style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr", gap: 8, alignItems: "center", background: "#fff", padding: "10px 12px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</span>
+                <select
+                  value={row.dashboardDays === null ? "null" : String(row.dashboardDays)}
+                  onChange={(e) => updateRow(c.slug, "dashboardDays", e.target.value === "null" ? null : Number(e.target.value))}
+                  style={selectDayStyle}
+                >
+                  {GRANT_DAY_OPTIONS.map((o) => (
+                    <option key={String(o.value)} value={o.value === null ? "null" : String(o.value)}>{o.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={row.pushDays === null ? "null" : String(row.pushDays)}
+                  onChange={(e) => updateRow(c.slug, "pushDays", e.target.value === "null" ? null : Number(e.target.value))}
+                  style={selectDayStyle}
+                >
+                  {GRANT_DAY_OPTIONS.map((o) => (
+                    <option key={String(o.value)} value={o.value === null ? "null" : String(o.value)}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
         </div>
-        <div>
-          <label style={labelStyle}>有效期</label>
-          <select value={grantDays} onChange={(e) => setGrantDays(Number(e.target.value))} style={{ ...inputStyle, width: "auto" }}>
-            {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        <button onClick={grant} disabled={loading || !newUid.trim()} style={{ ...btnStyle, background: "#276749", marginBottom: 0 }}>
-          ✅ 授权
+
+        <button onClick={submitGrant} disabled={loading || !grantUid.trim()} style={{ ...btnStyle, background: "#276749" }}>
+          ✅ 确认授权
         </button>
       </div>
 
@@ -777,6 +990,157 @@ export function OpsClient() {
 
       <ChannelAccessManager />
       <PasswordUserManager />
+      <AccessLogViewer />
+    </div>
+  );
+}
+
+// ─── 访问日志 / 爬虫检测 ─────────────────────────────────────────────────────
+
+type AccessStat = {
+  uid: string;
+  label: string | null;
+  count: number;
+  perHour: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  recent: { path: string; time: string }[];
+};
+
+function AccessLogViewer() {
+  const [hours, setHours] = useState(24);
+  const [stats, setStats] = useState<AccessStat[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    const r = await fetch(`/api/admin/access-logs?hours=${hours}`);
+    const d = await r.json() as { stats?: AccessStat[] };
+    setStats(d.stats ?? []);
+    setLoading(false);
+  }
+
+  // 超过每小时 20 次视为可疑
+  function riskLevel(perHour: number): { label: string; color: string; bg: string } {
+    if (perHour >= 60) return { label: "🚨 高度可疑", color: "#991b1b", bg: "#fee2e2" };
+    if (perHour >= 20) return { label: "⚠️ 异常频繁", color: "#92400e", bg: "#fef3c7" };
+    return { label: "✅ 正常", color: "#166534", bg: "#dcfce7" };
+  }
+
+  function fmtTime(iso: string | null) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  return (
+    <div style={{ marginTop: 40, paddingTop: 32, borderTop: "2px solid #e0e0e0" }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>🕵️ 访问日志 / 爬虫检测</h2>
+      <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>
+        统计各 UID 的 Dashboard 访问频次。每小时 &gt;20 次视为异常，&gt;60 次高度可疑。
+      </p>
+
+      {/* 控制栏 */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 13, color: "#555" }}>时间范围：</label>
+        {[1, 6, 24, 72, 168].map((h) => (
+          <button key={h} onClick={() => setHours(h)}
+            style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${hours === h ? "#2563eb" : "#d1d5db"}`,
+              background: hours === h ? "#eff6ff" : "#fff", color: hours === h ? "#2563eb" : "#555",
+              fontWeight: hours === h ? 700 : 400, fontSize: 12, cursor: "pointer" }}>
+            {h < 24 ? `${h}h` : `${h / 24}天`}
+          </button>
+        ))}
+        <button onClick={load} disabled={loading}
+          style={{ ...btnStyle, padding: "6px 16px", fontSize: 13, background: "#1e40af" }}>
+          {loading ? "加载中…" : "查询"}
+        </button>
+      </div>
+
+      {/* 结果表格 */}
+      {stats === null ? (
+        <p style={{ color: "#aaa", fontSize: 14 }}>点击「查询」加载数据</p>
+      ) : stats.length === 0 ? (
+        <p style={{ color: "#aaa", fontSize: 14 }}>暂无访问记录（可能日志功能刚启用）</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {stats.map((s) => {
+            const risk = riskLevel(s.perHour);
+            const isOpen = expanded === s.uid;
+            return (
+              <div key={s.uid} style={{ border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+                {/* 主行 */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  background: "#fafafa", flexWrap: "wrap", cursor: "pointer" }}
+                  onClick={() => setExpanded(isOpen ? null : s.uid)}>
+                  {/* 风险标签 */}
+                  <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
+                    background: risk.bg, color: risk.color, whiteSpace: "nowrap" }}>
+                    {risk.label}
+                  </span>
+                  {/* UID + 账号名 */}
+                  <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                    <div style={{ fontFamily: "monospace", fontSize: 12, color: "#374151",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.uid}
+                    </div>
+                    {s.label && <div style={{ fontSize: 11, color: "#6b7280" }}>{s.label}</div>}
+                  </div>
+                  {/* 统计数字 */}
+                  <div style={{ display: "flex", gap: 16, fontSize: 13, flexShrink: 0 }}>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontWeight: 700, fontSize: 16 }}>{s.count}</div>
+                      <div style={{ color: "#9ca3af", fontSize: 11 }}>总请求</div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: risk.color }}>{s.perHour}</div>
+                      <div style={{ color: "#9ca3af", fontSize: 11 }}>次/小时</div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 12 }}>{fmtTime(s.lastSeen)}</div>
+                      <div style={{ color: "#9ca3af", fontSize: 11 }}>最近访问</div>
+                    </div>
+                  </div>
+                  <span style={{ color: "#9ca3af", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
+                </div>
+
+                {/* 展开：最近10条记录 */}
+                {isOpen && (
+                  <div style={{ padding: "12px 14px", borderTop: "1px solid #f0f0f0", background: "#fff" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 8 }}>
+                      最近访问记录（最多10条）
+                    </div>
+                    {s.recent.length === 0 ? (
+                      <p style={{ color: "#aaa", fontSize: 12 }}>暂无明细</p>
+                    ) : (
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <tbody>
+                          {s.recent.map((r, i) => (
+                            <tr key={i} style={{ borderBottom: "1px solid #f5f5f5" }}>
+                              <td style={{ padding: "4px 8px", color: "#6b7280", width: 140 }}>
+                                {fmtTime(r.time)}
+                              </td>
+                              <td style={{ padding: "4px 8px", fontFamily: "monospace", color: "#374151" }}>
+                                {r.path}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                      <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                        首次访问：{fmtTime(s.firstSeen)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

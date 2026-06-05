@@ -1,10 +1,14 @@
 import { redirect, notFound } from "next/navigation";
+import { after } from "next/server";
 import Link from "next/link";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
 import { getAllMentionedStocks } from "@/lib/insights";
-import { getUserChannels, checkChannelAccess } from "@/lib/channels";
+import { getAllChannels, checkChannelAccess } from "@/lib/channels";
 import { isAdminUid } from "@/lib/admin";
+import { fetchTopicSubscribersWithExpiry } from "@/lib/wxpusher";
+import { SubscriptionInfoButton } from "./subscription-info-button";
+import type { ChannelAccessInfo } from "./subscription-info-button";
 import type { AiAnalysis } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -34,12 +38,167 @@ export default async function ChannelDashboardPage({
 
   const { channelSlug } = await params;
 
-  // 权限检查
-  const channel = await checkChannelAccess(uid, channelSlug);
-  if (!channel) notFound();
+  // 响应发出后异步记录访问日志（不阻塞渲染）
+  after(async () => {
+    try {
+      await prisma.accessLog.create({ data: { uid, path: `/dashboard/${channelSlug}` } });
+    } catch { /* 日志写入失败不影响用户 */ }
+  });
 
-  // 用户有权限的所有频道（用于顶部 Tab）
-  const userChannels = await getUserChannels(uid);
+  // 所有频道（Tab 栏全部显示），以及当前用户的访问权限
+  const [allChannels, channel] = await Promise.all([
+    getAllChannels(),
+    checkChannelAccess(uid, channelSlug),
+  ]);
+
+  // slug 不存在 → 404
+  const channelExists = allChannels.some((c) => c.slug === channelSlug);
+  if (!channelExists) notFound();
+
+  // 当前频道基础信息（即使无权限也需要展示名称）
+  const channelBasic = allChannels.find((c) => c.slug === channelSlug)!;
+
+  // 为 Tab 栏获取用户所有有权限的 slug
+  const now = new Date();
+  const myAccesses = await prisma.userChannelAccess.findMany({
+    where: {
+      uid,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: { channel: { select: { slug: true } } },
+  });
+  const mySlugs = new Set(myAccesses.map((a) => a.channel.slug));
+
+  // 无权限 → 显示锁定页（共享 header + tab 栏）
+  if (!channel) {
+    return (
+      <div className="min-h-screen bg-[#070d1a] text-slate-200">
+        <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#070d1a]/95 backdrop-blur-md">
+          <div className="mx-auto max-w-6xl px-4">
+            <div className="flex items-center justify-between py-3">
+              <div className="flex items-center gap-3">
+                {channelBasic.avatarUrl ? (
+                  <img src={channelBasic.avatarUrl} alt={channelBasic.name} className="h-8 w-8 flex-shrink-0 rounded-lg object-cover" />
+                ) : (
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-700 text-white text-sm font-bold">
+                    🔒
+                  </div>
+                )}
+                <div>
+                  <h1 className="text-sm font-semibold text-slate-400 tracking-tight">{channelBasic.name}</h1>
+                  <p className="font-mono text-xs text-slate-600">无访问权限</p>
+                </div>
+              </div>
+              <form action="/api/auth/wxpusher/logout" method="POST">
+                <button type="submit" className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer">
+                  退出
+                </button>
+              </form>
+            </div>
+            {/* Tab 栏：全部频道，锁定的灰显 */}
+            {allChannels.length > 1 && (
+              <div className="flex gap-1 overflow-x-auto pb-0 scrollbar-none -mx-4 px-4">
+                {allChannels.map((ch) => {
+                  const hasAccess = mySlugs.has(ch.slug);
+                  const isActive = ch.slug === channelSlug;
+                  return hasAccess ? (
+                    <Link
+                      key={ch.slug}
+                      href={`/dashboard/${ch.slug}`}
+                      className={`relative flex-shrink-0 px-3 py-2 text-xs font-semibold transition-colors rounded-t-md whitespace-nowrap ${
+                        isActive
+                          ? "text-teal-400 bg-slate-900 border border-b-0 border-slate-700"
+                          : "text-slate-500 hover:text-slate-300"
+                      }`}
+                    >
+                      {ch.name}
+                    </Link>
+                  ) : (
+                    <Link
+                      key={ch.slug}
+                      href={`/dashboard/${ch.slug}`}
+                      className={`relative flex-shrink-0 px-3 py-2 text-xs font-semibold transition-colors rounded-t-md whitespace-nowrap flex items-center gap-1 ${
+                        isActive
+                          ? "text-slate-400 bg-slate-900 border border-b-0 border-slate-700"
+                          : "text-slate-600 hover:text-slate-500"
+                      }`}
+                    >
+                      🔒 {ch.name}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </header>
+        <div className="mx-auto max-w-6xl px-4 py-24 text-center">
+          <div className="inline-flex flex-col items-center gap-5 rounded-2xl border border-slate-700/60 bg-[#0d1628] px-10 py-12 shadow-2xl">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800 text-3xl">
+              🔒
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-slate-200">暂未订阅此博主</h2>
+              <p className="text-sm text-slate-500">
+                您的 UID 尚未开通&nbsp;
+                <span className="font-semibold text-slate-300">「{channelBasic.name}」</span>
+                &nbsp;的访问权限
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-700/40 bg-amber-900/10 px-6 py-4 text-sm text-amber-300/80">
+              如需订阅，请联系管理员&nbsp;
+              <span className="font-bold text-amber-300 select-all">Wx：PM112629</span>
+            </div>
+            {/* 跳转到用户已有权限的第一个频道 */}
+            {myAccesses.length > 0 && (
+              <Link
+                href={`/dashboard/${myAccesses[0].channel.slug}`}
+                className="mt-1 text-xs text-teal-500 hover:text-teal-400 hover:underline transition-colors"
+              >
+                ← 返回我的频道
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 用户各频道访问权限详情（用于「我的订阅」弹窗）
+  const accessRecords = await prisma.userChannelAccess.findMany({
+    where: { uid },
+    include: { channel: true },
+  });
+  const accessInfoList: ChannelAccessInfo[] = await Promise.all(
+    accessRecords
+      .filter((a) => a.expiresAt === null || a.expiresAt > now)
+      .map(async (a) => {
+        // 检查是否是付费主题订阅者
+        let isTopicSubscriber = false;
+        let topicPushExpiresAt: string | null = null;
+        if (a.channel.wxpusherTopicId) {
+          const subs = await fetchTopicSubscribersWithExpiry(a.channel.wxpusherTopicId).catch(() => []);
+          const sub = subs.find((s) => s.uid === uid);
+          if (sub) {
+            isTopicSubscriber = true;
+            topicPushExpiresAt = sub.payEndTime ? new Date(sub.payEndTime).toISOString() : null;
+          }
+        }
+        // DB 里的 pushExpiresAt 优先于 WxPusher 的 payEndTime（管理员主动设置的限期）
+        const dbPushExpiresAt = a.pushExpiresAt?.toISOString() ?? null;
+        const effectivePushExpiresAt = dbPushExpiresAt !== null
+          ? dbPushExpiresAt          // 管理员设了限期，以此为准
+          : topicPushExpiresAt;      // 否则用 WxPusher 的（null = 永久）
+
+        return {
+          slug: a.channel.slug,
+          name: a.channel.name,
+          expiresAt: a.expiresAt?.toISOString() ?? null,
+          pushEnabled: a.pushEnabled,
+          pushExpiresAt: effectivePushExpiresAt,
+          isTopicSubscriber,
+        };
+      })
+  );
 
   const [tweets, topMentions] = await Promise.all([
     prisma.tweet.findMany({
@@ -104,6 +263,9 @@ export default async function ChannelDashboardPage({
               >
                 ⬡ Supply Chain
               </Link>
+              <div className="hidden sm:block">
+                <SubscriptionInfoButton accesses={accessInfoList} />
+              </div>
               {isAdminUid(uid) && (
                 <Link
                   href="/ops"
@@ -123,23 +285,63 @@ export default async function ChannelDashboardPage({
             </div>
           </div>
 
-          {/* 频道 Tab 栏（有多个频道才显示） */}
-          {userChannels.length > 1 && (
+          {/* 手机端导航条（sm 以下显示） */}
+          <div className="sm:hidden flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4">
+            <span className="flex flex-shrink-0 items-center gap-1.5 text-xs text-slate-500">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-400 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-teal-500" />
+              </span>
+              LIVE
+            </span>
+            <Link
+              href="/dashboard/alpha-map"
+              className="flex-shrink-0 flex items-center gap-1 rounded-md border border-amber-700/40 px-2.5 py-1 text-xs font-medium text-amber-500/80 hover:border-amber-600 hover:text-amber-400 transition-colors"
+            >
+              ⬡ Alpha Map
+            </Link>
+            <Link
+              href="/dashboard/supply-chain"
+              className="flex-shrink-0 flex items-center gap-1 rounded-md border border-violet-700/40 px-2.5 py-1 text-xs font-medium text-violet-500/80 hover:border-violet-600 hover:text-violet-400 transition-colors"
+            >
+              ⬡ Supply Chain
+            </Link>
+            <div className="flex-shrink-0">
+              <SubscriptionInfoButton accesses={accessInfoList} mobile />
+            </div>
+            {isAdminUid(uid) && (
+              <Link
+                href="/ops"
+                className="flex-shrink-0 flex items-center gap-1 rounded-md border border-slate-600 px-2.5 py-1 text-xs font-medium text-slate-400 hover:border-slate-400 hover:text-slate-200 transition-colors"
+              >
+                ⚙️ 后台
+              </Link>
+            )}
+          </div>
+
+          {/* 频道 Tab 栏（有多个频道才显示，包含所有频道，无权限的灰显+锁） */}
+          {allChannels.length > 1 && (
             <div className="flex gap-1 overflow-x-auto pb-0 scrollbar-none -mx-4 px-4">
-              {userChannels.map((ch) => {
+              {allChannels.map((ch) => {
+                const hasAccess = mySlugs.has(ch.slug);
                 const isActive = ch.slug === channelSlug;
                 return (
                   <Link
                     key={ch.slug}
                     href={`/dashboard/${ch.slug}`}
-                    className={`relative flex-shrink-0 px-3 py-2 text-xs font-semibold transition-colors rounded-t-md whitespace-nowrap ${
-                      isActive
+                    className={`relative flex-shrink-0 px-3 py-2 text-xs font-semibold transition-colors rounded-t-md whitespace-nowrap flex items-center gap-1 ${
+                      isActive && hasAccess
                         ? "text-teal-400 bg-slate-900 border border-b-0 border-slate-700"
-                        : "text-slate-500 hover:text-slate-300"
+                        : hasAccess
+                          ? "text-slate-500 hover:text-slate-300"
+                          : isActive
+                            ? "text-slate-500 bg-slate-900 border border-b-0 border-slate-700"
+                            : "text-slate-600 hover:text-slate-500"
                     }`}
                   >
+                    {!hasAccess && <span className="text-[10px]">🔒</span>}
                     {ch.name}
-                    {isActive && (
+                    {isActive && hasAccess && (
                       <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500 rounded-t" />
                     )}
                   </Link>

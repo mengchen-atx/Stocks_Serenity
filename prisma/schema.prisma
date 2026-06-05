@@ -138,13 +138,15 @@ model Channel {
 
 // 用户-频道权限（管理员手动分配）
 model UserChannelAccess {
-  id             String    @id @default(cuid())
-  uid            String    // WxPusher UID
-  channelId      String
-  grantedAt      DateTime  @default(now())
-  expiresAt      DateTime? // null = 永久有效；有值 = 到期时间
-  grantedManually Boolean  @default(false) // true = 管理员手动授权，sync 不撤销
-  channel        Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  id              String    @id @default(cuid())
+  uid             String    // WxPusher UID
+  channelId       String
+  grantedAt       DateTime  @default(now())
+  expiresAt       DateTime? // Dashboard 到期时间（null = 永久）
+  grantedManually Boolean   @default(false) // true = 管理员手动授权，sync 不撤销
+  pushEnabled     Boolean   @default(false) // 是否开启手动 WxPusher 推送
+  pushExpiresAt   DateTime? // 推送到期时间（null = 永久；pushEnabled=false 时忽略）
+  channel         Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([uid, channelId])
   @@index([uid])
@@ -242,6 +244,17 @@ model PushLog {
 
   @@unique([tweetId, channel, payloadHash])
   @@index([status, createdAt])
+}
+
+// 访问日志（用于发现异常高频访问/爬虫行为）
+model AccessLog {
+  id        String   @id @default(cuid())
+  uid       String
+  path      String
+  createdAt DateTime @default(now())
+
+  @@index([uid, createdAt])
+  @@index([createdAt])
 }
 
 model CronRun {

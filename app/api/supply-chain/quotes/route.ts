@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { ALL_COMPANIES } from "@/lib/supply-chain-data";
 
-// Cache for 15 minutes server-side; stale-while-revalidate lets old data serve
-// while background revalidation runs.
-export const revalidate = 900;
+// Cache for 2 minutes server-side during market hours; stale-while-revalidate
+// lets old data serve while background revalidation runs.
+export const revalidate = 120;
 
 export type QuoteData = {
   dp24h: number | null;
@@ -40,7 +40,11 @@ async function fetchYahooChart(ticker: string): Promise<{ ticker: string; data: 
     const json = (await res.json()) as {
       chart?: {
         result?: Array<{
-          meta?: { regularMarketPrice?: number };
+          meta?: {
+            regularMarketPrice?: number;
+            regularMarketPreviousClose?: number;
+            // NOTE: chartPreviousClose is the price at START of chart range (NOT prev day) — do not use for dp24h
+          };
           timestamp?: number[];
           indicators?: {
             quote?: Array<{ close?: (number | null)[] }>;
@@ -54,11 +58,16 @@ async function fetchYahooChart(ticker: string): Promise<{ ticker: string; data: 
 
     const closes = result.indicators?.quote?.[0]?.close ?? [];
     const timestamps = result.timestamp ?? [];
-    const price = result.meta?.regularMarketPrice ?? null;
+    const meta = result.meta ?? {};
+    const currentPrice = meta.regularMarketPrice ?? null;
+    // regularMarketPreviousClose = the official prior session close (correct for 1d %).
+    // NEVER fall back to chartPreviousClose — that is the price at the START of the
+    // chart range (35d ago), which would produce absurdly large percentages.
+    const prevSessionClose = meta.regularMarketPreviousClose ?? null;
 
     if (closes.length < 2) return { ticker, data: null };
 
-    // Find the most recent non-null close
+    // Find the most recent non-null close (used for 7d / 30d baselines)
     let lastClose: number | null = null;
     let lastIdx = -1;
     for (let i = closes.length - 1; i >= 0; i--) {
@@ -66,11 +75,17 @@ async function fetchYahooChart(ticker: string): Promise<{ ticker: string; data: 
     }
     if (lastClose === null || lastIdx < 1) return { ticker, data: null };
 
-    // Previous trading day close (for dp24h)
-    let prevClose: number | null = null;
+    // Previous daily bar close — fallback for dp24h when meta.regularMarketPreviousClose
+    // is missing (e.g. pre-market / extended hours responses).
+    let prevBarClose: number | null = null;
     for (let i = lastIdx - 1; i >= 0; i--) {
-      if (closes[i] != null) { prevClose = closes[i] as number; break; }
+      if (closes[i] != null) { prevBarClose = closes[i] as number; break; }
     }
+
+    // Effective current price: prefer live market price, fall back to last daily close
+    const effectivePrice = currentPrice ?? lastClose;
+    // Effective previous close: prefer meta field, fall back to previous daily bar
+    const effectivePrevClose = prevSessionClose ?? prevBarClose;
 
     const now = timestamps[lastIdx] ?? Date.now() / 1000;
     const ts7dAgo  = now - 7  * 24 * 3600;
@@ -95,8 +110,10 @@ async function fetchYahooChart(ticker: string): Promise<{ ticker: string; data: 
     return {
       ticker,
       data: {
-        price: price ?? +lastClose.toFixed(2),
-        dp24h: pct(lastClose, prevClose),
+        price: +effectivePrice.toFixed(2),
+        // dp24h: current price vs previous session's official close
+        dp24h: pct(effectivePrice, effectivePrevClose),
+        // dp7d / dp30d: last daily close vs the close ~N days ago
         dp7d:  pct(lastClose, close7d),
         dp30d: pct(lastClose, close30d),
       },
@@ -134,7 +151,7 @@ export async function GET() {
 
   return NextResponse.json(map, {
     headers: {
-      "Cache-Control": "public, s-maxage=900, stale-while-revalidate=1800",
+      "Cache-Control": "public, s-maxage=120, stale-while-revalidate=300",
     },
   });
 }

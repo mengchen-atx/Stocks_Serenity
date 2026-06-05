@@ -14,5 +14,9 @@ export default async function OpsPage() {
   // 非管理员 → 回 dashboard（不暴露 403，像普通路由一样）
   if (!isAdminUid(uid)) redirect("/dashboard");
 
-  return <OpsClient />;
+  return (
+    <div style={{ minHeight: "100vh", background: "#ffffff", color: "#1a1a1a" }}>
+      <OpsClient />
+    </div>
+  );
 }

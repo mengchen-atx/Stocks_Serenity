@@ -17,8 +17,8 @@ ${buildKnowledgeContext()}
 
 === 任务 ===
 
-1. 理解 tweet 真正表达的投资逻辑，不要字面翻译。
-2. 将原文翻译成自然中文，保留 ticker、公司名和关键行业术语（如有必要加括注）。
+1. 理解 tweet 真正表达的投资逻辑与语气，不要字面翻译。
+2. 将原文翻译成流畅、地道的中文（详见翻译规范）。
 3. 判断哪些美股/OTC 股票明确受益（利好）。
 4. 判断哪些股票明确受损（利空）。
 5. 给出清晰的 reasoning chain，解释产业链逻辑。
@@ -63,6 +63,50 @@ ${buildKnowledgeContext()}
 - 这类句式中的 ticker 必须列为 bullish，绝不能列为 bearish
 - 疑问句式"I deserve X after $XXX?"也是同样的炫耀语气，不是质疑该股票
 
+=== 翻译规范（translated_content_cn）===
+
+**核心原则：意译优先，保留语气**
+- 目标读者是中文 AI/美股投资社群，翻译要像财经博主写的帖子，不像机器翻译
+- 保留作者的语气：兴奋就要写出来，讽刺就要传达出来，担忧也要有感觉
+- 遇到用中文说不清楚的地方，允许适当意译或加一句背景解释
+
+**专业术语处理**
+- 行业英文缩写（CPO、HBM、CoWoS、HVDC、NRE 等）直接保留，无需翻译
+- 公司名、股票代码（$NVDA、$TSMC）保留原文大写
+- 常见金融英文（capex、guidance、beat、miss、multiple、short interest）用中文业内惯用说法：
+  - capex → 资本支出
+  - guidance → 业绩指引
+  - beat → 超预期
+  - miss → 不及预期
+  - re-rating / multiple expansion → 估值重估 / 市盈率扩张
+  - short interest → 空头持仓
+  - headcount → 员工人数（裁员语境 → 缩编）
+  - run rate → 年化运营率
+
+**推特常用表达的对应中文**
+- "this is nuts / insane / wild" → 离谱 / 太夸张了 / 太猛了
+- "underappreciated / overlooked" → 被市场低估 / 还没被定价
+- "I can't believe / mind blown" → 难以置信 / 颠覆认知
+- "the street / consensus" → 华尔街 / 市场一致预期
+- "priced in / not priced in" → 已被定价 / 还没被定价
+- "screaming buy / screaming deal" → 绝对值得买 / 严重低估
+- "watch this space" → 这块值得持续关注
+- "ripping / going parabolic" → 暴拉 / 走出抛物线行情
+- "getting killed / blowing up" → 重创 / 暴跌
+- "take the other side" → 反向做空
+- "on the margin / at the margin" → 边际上
+- "idiosyncratic" → 个股逻辑（与大盘无关）
+- "set up" → 做多/空的布局时机已到
+- "supply/demand dynamics" → 供需格局
+- "multiple on multiple" → 双重估值扩张
+
+**格式要求**
+- 换行、段落、列表保持原文结构，不要压成一段
+- 数字、百分比、金额保留原文写法（如 $2B、40%、1.5x）
+- 不要加原文没有的评价词（如"强烈推荐"、"不容错过"）
+- 如原文有 emoji，保留
+- 翻译长度应与原文相近，不要大幅压缩也不要注水扩写
+
 === 严格规则 ===
 
 - 禁止 hallucination：不确定就留空数组，不要瞎猜 ticker。
@@ -91,10 +135,14 @@ export function buildTweetAnalysisPrompt(tweet: string): string {
 原文：
 ${tweet}
 
-翻译要求：
-- 适合中文投资社群阅读，像金融媒体记者风格
-- 保留 CPO、silicon photonics、GPU、800V HVDC 等行业术语，并在首次出现时用中文括注
-- Ticker 符号保持大写
+翻译要求（translated_content_cn）：
+- 目标是让中文读者读完有"哦，作者是这个意思"的感觉，而不是"这句话什么意思"
+- 意译：先理解作者想说什么，再用地道中文表达——不要逐词对译
+- 保留语气：作者兴奋就要兴奋，讽刺就要讽刺，不要翻译成平铺直叙
+- 行业术语（CPO、HBM、HVDC 等）直接保留，capex/guidance/beat/miss 等用中文业内惯用说法
+- Ticker 和公司名保持原文大写
+- 保留原文的换行和段落结构，数字/百分比/金额不改写
+- 如果某句话直译后中文读者会看不懂，请主动加半句背景说明（用括号或破折号插入）
 
 分析要求：
 - 首先处理推文中 $TICKER 直接点名的股票，判断多空方向，绝不遗漏

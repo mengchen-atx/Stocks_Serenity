@@ -63,14 +63,18 @@ export async function checkChannelAccess(
 export async function grantChannelAccess(
   uid: string,
   channelSlug: string,
-  expiresAt?: Date | null
+  expiresAt?: Date | null,
+  opts?: { pushEnabled?: boolean; pushExpiresAt?: Date | null }
 ) {
   const channel = await prisma.channel.findUnique({ where: { slug: channelSlug } });
   if (!channel) throw new Error(`Channel not found: ${channelSlug}`);
+  const pushFields = opts
+    ? { pushEnabled: opts.pushEnabled ?? false, pushExpiresAt: opts.pushExpiresAt ?? null }
+    : {};
   return prisma.userChannelAccess.upsert({
     where: { uid_channelId: { uid, channelId: channel.id } },
-    create: { uid, channelId: channel.id, expiresAt: expiresAt ?? null, grantedManually: true },
-    update: { expiresAt: expiresAt ?? null, grantedManually: true },
+    create: { uid, channelId: channel.id, expiresAt: expiresAt ?? null, grantedManually: true, ...pushFields },
+    update: { expiresAt: expiresAt ?? null, grantedManually: true, ...pushFields },
   });
 }
 

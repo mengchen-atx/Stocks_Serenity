@@ -178,103 +178,66 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
 /**
  * 生成推送预览文字（出现在手机通知栏）
  */
-export function buildWxPusherSummary(analysis: AiAnalysis): string {
+export function buildWxPusherSummary(analysis: AiAnalysis, authorUsername?: string): string {
+  const author = authorUsername ?? "Serenity";
   const bullish = analysis.bullish_stocks.slice(0, 3).map((s) => s.ticker).join(" ");
   const bearish = analysis.bearish_stocks.slice(0, 2).map((s) => s.ticker).join(" ");
   const parts: string[] = [];
   if (bullish) parts.push(`📈 ${bullish}`);
   if (bearish) parts.push(`📉 ${bearish}`);
   return parts.length > 0
-    ? `Serenity新信号 ${parts.join(" ｜ ")} 置信度${analysis.confidence}%`
-    : "Serenity 发布新观点";
+    ? `${author} 新信号 ${parts.join(" ｜ ")} 置信度${analysis.confidence}%`
+    : `${author} 发布新观点`;
 }
 
 // ─── Send ─────────────────────────────────────────────────────────────────────
 
 /**
- * 推送到 WxPusher 话题（所有订阅用户都能收到）
+ * 话题广播推送（A类用户专用）
+ *
+ * 通过 topicIds 发送，来源显示为话题名（如「Serenity一手信息」）。
+ * verifyPayType: 1 → WxPusher 自动过滤付费已到期的订阅者。
  */
-export async function sendWxPusherTopic(
+export async function sendWxPusherTopicBroadcast(
   html: string,
   summary: string,
   sourceUrl?: string | null,
-  topicIdOverride?: string | null   // 频道专属主题 ID，不传则用默认
+  topicId?: string | null
 ): Promise<{ ok: boolean; status: number; body: string }> {
-  const topicId = topicIdOverride ?? env.WXPUSHER_TOPIC_ID;
-  if (!env.WXPUSHER_APP_TOKEN || !topicId) {
+  const tid = topicId ?? env.WXPUSHER_TOPIC_ID;
+  if (!env.WXPUSHER_APP_TOKEN || !tid) {
     return { ok: false, status: 400, body: "WXPUSHER_APP_TOKEN or topicId not set" };
   }
 
-  // ── 1. 发给话题订阅者（verifyPayType:1 只推给付费用户）────────────────────
-  const topicPayload: WxPusherPayload = {
+  const payload: WxPusherPayload = {
     appToken: env.WXPUSHER_APP_TOKEN,
     content: html,
     summary,
     contentType: 2,
-    topicIds: [Number(topicId)],
+    topicIds: [Number(tid)],
     url: sourceUrl ?? undefined,
-    verifyPayType: 1
+    verifyPayType: 1, // 只推给付费有效期内的订阅者，过期自动排除
   };
-
-  let topicOk = false;
-  let lastStatus = 500;
-  let lastBody = "";
 
   try {
     const res = await fetch(WXPUSHER_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(topicPayload)
+      body: JSON.stringify(payload),
     });
-    lastStatus = res.status;
-    lastBody = await res.text();
-    const json = JSON.parse(lastBody) as WxPusherResponse;
+    const body = await res.text();
+    const json = JSON.parse(body) as WxPusherResponse;
     if (json.success) {
-      topicOk = true;
-      logger.info({ sent: json.data?.length ?? 0 }, "WxPusher pushed");
+      logger.info({ topicId: tid, sent: json.data?.length ?? 0 }, "WxPusher topic broadcast sent");
     } else {
-      logger.warn({ code: json.code, msg: json.msg }, "WxPusher topic error");
+      logger.warn({ code: json.code, msg: json.msg }, "WxPusher topic broadcast error");
     }
+    return { ok: json.success, status: res.status, body };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err: msg }, "WxPusher topic send failed");
-    lastBody = msg;
+    logger.error({ err: msg }, "WxPusher topic broadcast failed");
+    return { ok: false, status: 500, body: msg };
   }
-
-  // ── 2. 单独发给所有管理员 UID（不校验付费，管理员始终收到）────────────────
-  const adminUids = getAdminUids();
-  if (adminUids.length > 0) {
-    const adminPayload: WxPusherPayload = {
-      appToken: env.WXPUSHER_APP_TOKEN,
-      content: html,
-      summary,
-      contentType: 2,
-      uids: adminUids,
-      url: sourceUrl ?? undefined
-      // 不带 verifyPayType，默认 0（不验证付费）
-    };
-    try {
-      const res = await fetch(WXPUSHER_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(adminPayload)
-      });
-      const body = await res.text();
-      const json = JSON.parse(body) as WxPusherResponse;
-      console.log("[WxPusher admin] 完整响应:", JSON.stringify(json, null, 2));
-      if (json.success) {
-        logger.info({ adminUids, data: json.data }, "WxPusher admin pushed");
-      } else {
-        logger.warn({ code: json.code, msg: json.msg }, "WxPusher admin error");
-      }
-    } catch (err) {
-      logger.error({ err: err instanceof Error ? err.message : err }, "WxPusher admin send failed");
-    }
-  }
-
-  return topicOk
-    ? { ok: true, status: lastStatus, body: lastBody }
-    : { ok: false, status: lastStatus, body: lastBody };
 }
 
 /**

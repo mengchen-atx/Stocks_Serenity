@@ -10,7 +10,7 @@ import { sha256 } from "@/lib/hash";
 import {
   buildWxPusherSummary,
   renderWxPusherHtml,
-  sendWxPusherTopic
+  sendWxPusherTopicBroadcast
 } from "@/lib/wxpusher";
 import { getTopMentionedStocks } from "@/lib/insights";
 import type { AiAnalysis } from "@/types";
@@ -160,7 +160,7 @@ async function main() {
     topMentions
   });
   const summary = buildWxPusherSummary(analysis);
-  const pushResult = await sendWxPusherTopic(html, summary, existing.sourceUrl);
+  const pushResult = await sendWxPusherTopicBroadcast(html, summary, existing.sourceUrl);
 
   if (pushResult.ok) {
     await prisma.tweet.update({ where: { tweetId }, data: { pushed: true } });

@@ -16,11 +16,11 @@ interface Props {
   onClick: (ticker: string) => void;
 }
 
-/** Card background color = ONLY today's price direction. */
-function cardCls(dp24h: number | null): string {
-  if (dp24h === null) return "bg-slate-800/50 border-slate-700/50";
-  if (dp24h > 0)     return "bg-emerald-900/40 border-emerald-700/50";
-  if (dp24h < 0)     return "bg-red-900/40 border-red-700/50";
+/** Card background color = direction of the currently selected time range. */
+function cardCls(delta: number | null): string {
+  if (delta === null) return "bg-slate-800/50 border-slate-700/50";
+  if (delta > 0)     return "bg-emerald-900/40 border-emerald-700/50";
+  if (delta < 0)     return "bg-red-900/40 border-red-700/50";
   return "bg-slate-800/50 border-slate-600/50"; // flat
 }
 
@@ -65,7 +65,6 @@ export function CompanyCard({
   onMouseLeave,
   onClick,
 }: Props) {
-  const dp24h   = quote?.dp24h ?? null;
   const delta   = getDelta(quote, timeRange);
   const mentions = getMentions(company, timeRange);
 
@@ -89,7 +88,7 @@ export function CompanyCard({
       className={`
         rounded-md border px-2.5 py-2 cursor-pointer select-none
         transition-all duration-200
-        ${cardCls(dp24h)}
+        ${cardCls(delta)}
         ${isHighlighted ? "ring-2 ring-amber-400/70 scale-[1.03]" : ""}
         ${isDimmed ? "opacity-25" : "opacity-100"}
         hover:brightness-125 hover:scale-[1.02]
