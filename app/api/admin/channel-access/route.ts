@@ -36,36 +36,45 @@ export async function GET(req: NextRequest) {
     });
     const accessMap = new Map(accesses.map((a) => [a.channel.slug, a]));
 
-    // WxPusher 话题付费订阅者 + payEndTime（只查有 topicId 的频道）
-    const topicPayEndMap = new Map<string, number | null>();
+    // WxPusher 话题付费订阅状态（payEndTime > now 才算有效）
+    // 注意：WxPusher API 返回的列表包含所有 app 关注者（payEndTime=0），
+    //       必须用 payEndTime > Date.now() 区分真正付费订阅者和免费关注者
+    const nowMs = Date.now();
+    const topicPayEndMap = new Map<string, number>(); // slug → payEndTime（只存有效付费记录）
     for (const ch of allChannels) {
       if (!ch.wxpusherTopicId) continue;
       const subs = await fetchTopicSubscribersWithExpiry(ch.wxpusherTopicId).catch(() => []);
       const sub = subs.find((s) => s.uid === targetUid);
-      if (sub) topicPayEndMap.set(ch.slug, sub.payEndTime ?? null);
+      // 只有 payEndTime > now 才是真正的付费话题订阅者
+      if (sub?.payEndTime && sub.payEndTime > nowMs) {
+        topicPayEndMap.set(ch.slug, sub.payEndTime);
+      }
     }
 
     const result = allChannels.map((c) => {
       const access = accessMap.get(c.slug);
       const hasAccess = !!access && (access.expiresAt === null || access.expiresAt > now);
+
+      // 是否是当前有效的付费 WxPusher 话题订阅者（payEndTime > now）
       const isTopicSubscriber = topicPayEndMap.has(c.slug);
 
-      // DB 里是否设了推送到期时间（管理员主动设置的，优先于 WxPusher 的 payEndTime）
+      // DB 里是否设了推送到期时间（管理员主动设置的）
       const dbPushExpiresAt = access?.pushExpiresAt ?? null;
       const dbPushExpired = dbPushExpiresAt !== null && dbPushExpiresAt <= now;
 
-      // 能收到推送：未被 DB 限期到期，且（话题订阅 or 手动开启推送）
+      // 能收到推送：必须是管理员在后台显式开启 pushEnabled=true 且未过期
+      // 话题订阅者通过 WxPusher 平台广播（verifyPayType:1）收消息，不经过此字段
+      // 但在 ops 面板里同样展示，让管理员了解全貌
       const canReceivePush = !dbPushExpired && (
-        isTopicSubscriber ||
         (!!access?.pushEnabled && (dbPushExpiresAt === null || dbPushExpiresAt > now))
       );
 
-      // 显示的推送到期时间：DB 显式设置优先；否则用 WxPusher payEndTime
+      // 推送到期时间：DB 显式设置优先；话题订阅者用 WxPusher payEndTime
       const topicPayEnd = topicPayEndMap.get(c.slug);
       const pushExpiresAt = dbPushExpiresAt !== null
         ? dbPushExpiresAt.toISOString()
-        : isTopicSubscriber
-          ? (topicPayEnd ? new Date(topicPayEnd).toISOString() : null)
+        : isTopicSubscriber && topicPayEnd
+          ? new Date(topicPayEnd).toISOString()
           : null;
 
       return {
@@ -77,8 +86,8 @@ export async function GET(req: NextRequest) {
         grantedManually: access?.grantedManually ?? false,
         pushEnabled: access?.pushEnabled ?? false,
         pushExpiresAt,
-        isTopicSubscriber,
-        canReceivePush,
+        isTopicSubscriber,  // 仅供参考：是否在 WxPusher 话题订阅名单（付费有效期内）
+        canReceivePush,     // 管理员后台授权的推送开关，app 关注者默认 false
       };
     });
 

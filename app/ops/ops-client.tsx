@@ -414,11 +414,18 @@ function ChannelAccessManager() {
                     {/* 推送行 */}
                     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, flexWrap: "wrap", marginTop: 4 }}>
                       <span style={{ color: C.textSub, minWidth: 80 }}>📲 推送</span>
+                      {/* 管理员手动授权的推送（我们的 UID 推送） */}
                       {c.canReceivePush
-                        ? <span style={{ color: C.green }}>✅ 能收到</span>
-                        : <span style={{ color: C.textMuted }}>— 未开启</span>}
-                      {c.isTopicSubscriber && <span style={{ fontSize: 11, background: C.greenBg, color: C.green, borderRadius: 10, padding: "1px 7px" }}>付费订阅</span>}
-                      {c.canReceivePush && c.pushEnabled && !c.isTopicSubscriber && <span style={{ fontSize: 11, background: C.yellowBg, color: C.yellow, borderRadius: 10, padding: "1px 7px" }}>手动</span>}
+                        ? <><span style={{ color: C.green }}>✅ 已授权</span>
+                            <span style={{ fontSize: 11, background: C.yellowBg, color: C.yellow, borderRadius: 10, padding: "1px 7px" }}>手动</span>
+                          </>
+                        : <span style={{ color: C.textMuted }}>— 未授权</span>}
+                      {/* WxPusher 话题付费订阅（平台自动广播，与上面独立） */}
+                      {c.isTopicSubscriber && (
+                        <span style={{ fontSize: 11, background: C.greenBg, color: C.green, borderRadius: 10, padding: "1px 7px" }}>
+                          📡 话题订阅（{c.pushExpiresAt ? new Date(c.pushExpiresAt).toLocaleDateString("zh-CN") + "到期" : "永久"}）
+                        </span>
+                      )}
                       {c.canReceivePush && <ExpiryDisplay isoDate={c.pushExpiresAt} prefix="· " />}
                       <button onClick={() => toggleEdit(c.slug, "push")}
                         style={{ marginLeft: "auto", padding: "2px 8px", background: pushOpen ? C.greenBg : "none", border: `1px solid ${pushOpen ? "#16a34a" : C.borderMid}`, color: pushOpen ? C.green : C.textSub, borderRadius: 6, fontSize: 11, cursor: "pointer" }}>
