@@ -2,9 +2,9 @@ name: Serenity Pipeline
 
 on:
   schedule:
-    # 备用触发：每5分钟一次
+    # 备用触发：每4分钟一次
     # 主要触发器已改为 cron-job.org（更精准，不受 GitHub 限流影响）
-    - cron: "*/5 * * * *"
+    - cron: "*/4 * * * *"
   # 也可以在 GitHub Actions 页面手动触发，方便调试
   workflow_dispatch:
 
