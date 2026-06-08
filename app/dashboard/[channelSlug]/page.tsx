@@ -592,17 +592,17 @@ export default async function ChannelDashboardPage({
                 <div className="space-y-1">
                   {aShareMentions.map((m) => (
                     <div key={m.ticker} className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-800/60">
-                      <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/dashboard/${channelSlug}/stock/${m.ticker}`}
+                        className="group min-w-0 flex-1"
+                      >
                         {m.companyName && (
-                          <span className="mr-1.5 text-sm text-slate-300">{m.companyName}</span>
+                          <span className="mr-1.5 text-sm text-slate-300 transition-colors group-hover:text-teal-400">{m.companyName}</span>
                         )}
-                        <Link
-                          href={`/dashboard/${channelSlug}/stock/${m.ticker}`}
-                          className="font-mono text-sm font-bold text-slate-400 transition-colors hover:text-teal-400"
-                        >
+                        <span className="font-mono text-sm font-bold text-slate-400 transition-colors group-hover:text-teal-400">
                           {m.ticker}
-                        </Link>
-                      </div>
+                        </span>
+                      </Link>
                       <div className="flex flex-shrink-0 items-center gap-1">
                         {m.bullishCount > 0 && (
                           <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-emerald-400">
