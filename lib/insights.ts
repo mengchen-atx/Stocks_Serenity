@@ -100,19 +100,22 @@ export function isAShareTicker(ticker: string): boolean {
 }
 
 /**
- * 找出本条推文中"看涨且该频道历史上从未被提及过"的 A 股代码。
+ * 找出本条推文中"该频道历史上从未被提及过"的 A 股代码（不区分多空）。
  * 用于在推送标题中触发紧急提醒——首次点名的 A 股往往是信息差最大的窗口期。
  *
- * @param bullishTickers 当前推文 AI 分析出的看涨 ticker 列表
+ * 故意不按多空过滤：AI 的看涨/看跌判断有时会出错，但"这是个全新的 A 股标的"
+ * 这件事本身就值得让用户立刻点进去看一眼，不应该因为 AI 判断错了方向而错过。
+ *
+ * @param tickers        当前推文 AI 分析出的全部 ticker（看涨+看跌）
  * @param channelId      当前频道 ID（用于限定"历史"范围，跨频道不互相影响）
  * @param excludeTweetId 当前推文的内部 id（排除本条推文刚创建的 mention 记录）
  */
-export async function findNewBullishAShareTickers(
-  bullishTickers: string[],
+export async function findNewlyMentionedAShareTickers(
+  tickers: string[],
   channelId: string | null | undefined,
   excludeTweetId: string
 ): Promise<string[]> {
-  const candidates = [...new Set(bullishTickers.filter(isAShareTicker))];
+  const candidates = [...new Set(tickers.filter(isAShareTicker))];
   if (candidates.length === 0) return [];
 
   const stocks = await prisma.stock.findMany({

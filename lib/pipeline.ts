@@ -23,7 +23,7 @@ import {
   fetchTopicSubscribersWithExpiry
 } from "@/lib/wxpusher";
 import { isAdminUid, getAdminUids } from "@/lib/admin";
-import { getTopMentionedStocks, findNewBullishAShareTickers } from "@/lib/insights";
+import { getTopMentionedStocks, findNewlyMentionedAShareTickers } from "@/lib/insights";
 import type { TopMention } from "@/lib/insights";
 import type { AiAnalysis, TweetInput, StockProfile } from "@/types";
 import { sendHistoryToSubscriber } from "@/lib/history-sender";
@@ -166,11 +166,12 @@ export async function handleTweet(
     ? await getTopMentionedStocks(30, 10, channelId).catch(() => undefined)
     : undefined;
 
-  // 检测本条推文是否首次点名了某只看涨 A 股（该频道历史上从未提及过）
+  // 检测本条推文是否首次点名了某只 A 股（该频道历史上从未提及过，不分多空）
   // → 命中时用紧急标题提醒用户立刻查看，抢占信息差窗口期
-  const newBullishAShareTickers = channels.includes(PushChannel.WXPUSHER)
-    ? await findNewBullishAShareTickers(
-        analysis.bullish_stocks.map((s) => s.ticker),
+  // 不按多空过滤：AI 的看涨/看跌判断有时会出错，但"全新标的"本身就值得立刻关注
+  const newAShareTickers = channels.includes(PushChannel.WXPUSHER)
+    ? await findNewlyMentionedAShareTickers(
+        [...analysis.bullish_stocks, ...analysis.bearish_stocks].map((s) => s.ticker),
         channelId ?? null,
         saved.id
       ).catch(() => [])
@@ -194,7 +195,7 @@ export async function handleTweet(
 
     let sent: { ok: boolean; status: number; body: string };
     try {
-      sent = await dispatchChannel(channel, content, tweet, analysis, stocks, { channelTopicId, channelId, authorDisplayName, newBullishAShareTickers });
+      sent = await dispatchChannel(channel, content, tweet, analysis, stocks, { channelTopicId, channelId, authorDisplayName, newAShareTickers });
     } catch (err) {
       logger.error({ err, channel }, "push dispatch failed");
       sent = { ok: false, status: 500, body: String(err) };
@@ -291,7 +292,7 @@ async function dispatchChannel(
   tweet: TweetInput,
   analysis: AiAnalysis,
   stocks: StockProfile[],
-  extra?: { channelTopicId?: string | null; channelId?: string | null; authorDisplayName?: string; newBullishAShareTickers?: string[] }
+  extra?: { channelTopicId?: string | null; channelId?: string | null; authorDisplayName?: string; newAShareTickers?: string[] }
 ): Promise<{ ok: boolean; status: number; body: string }> {
   switch (channel) {
     case PushChannel.WECHAT_WORK_BOT:
@@ -308,7 +309,7 @@ async function dispatchChannel(
 
     case PushChannel.WXPUSHER: {
       const authorName = extra?.authorDisplayName ?? tweet.authorUsername;
-      const summary = buildWxPusherSummary(analysis, authorName, extra?.newBullishAShareTickers);
+      const summary = buildWxPusherSummary(analysis, authorName, extra?.newAShareTickers);
       const channelTopicId = extra?.channelTopicId ?? null;
       const channelId = extra?.channelId ?? null;
       const adminUids = getAdminUids();

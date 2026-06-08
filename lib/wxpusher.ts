@@ -181,12 +181,13 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
 export function buildWxPusherSummary(
   analysis: AiAnalysis,
   authorUsername?: string,
-  newBullishAShareTickers?: string[]
+  newAShareTickers?: string[]
 ): string {
-  // 首次点名的看涨 A 股 → 用紧急标题抢占通知栏，提醒用户立刻查看
+  // 首次点名的 A 股（不分多空）→ 用紧急标题抢占通知栏，提醒用户立刻查看
+  // 不按多空过滤：AI 的看涨/看跌判断有时会出错，但"全新标的"本身就值得立刻关注
   // （历史教训：今天一只新点名的 A 股在 10 分钟内涨停，普通标题容易被刷掉）
-  if (newBullishAShareTickers && newBullishAShareTickers.length > 0) {
-    const tickers = newBullishAShareTickers.slice(0, 2).join("/");
+  if (newAShareTickers && newAShareTickers.length > 0) {
+    const tickers = newAShareTickers.slice(0, 2).join("/");
     return `🚨【A股预警】首次点名 ${tickers}！速看，机会窗口可能很短`;
   }
 
