@@ -92,3 +92,54 @@ export async function getAllMentionedStocks(
     };
   });
 }
+
+const A_SHARE_TICKER_REGEX = /^\d{6}(\.(SZ|SH|SS))?$/i;
+
+export function isAShareTicker(ticker: string): boolean {
+  return A_SHARE_TICKER_REGEX.test(ticker);
+}
+
+/**
+ * 找出本条推文中"看涨且该频道历史上从未被提及过"的 A 股代码。
+ * 用于在推送标题中触发紧急提醒——首次点名的 A 股往往是信息差最大的窗口期。
+ *
+ * @param bullishTickers 当前推文 AI 分析出的看涨 ticker 列表
+ * @param channelId      当前频道 ID（用于限定"历史"范围，跨频道不互相影响）
+ * @param excludeTweetId 当前推文的内部 id（排除本条推文刚创建的 mention 记录）
+ */
+export async function findNewBullishAShareTickers(
+  bullishTickers: string[],
+  channelId: string | null | undefined,
+  excludeTweetId: string
+): Promise<string[]> {
+  const candidates = [...new Set(bullishTickers.filter(isAShareTicker))];
+  if (candidates.length === 0) return [];
+
+  const stocks = await prisma.stock.findMany({
+    where: { ticker: { in: candidates } },
+    select: { id: true, ticker: true }
+  });
+  const stockIdByTicker = new Map(stocks.map((s) => [s.ticker, s.id]));
+  const knownStockIds = stocks.map((s) => s.id);
+
+  const seenStockIds = new Set(
+    knownStockIds.length === 0
+      ? []
+      : (
+          await prisma.stockMention.findMany({
+            where: {
+              stockId: { in: knownStockIds },
+              tweetId: { not: excludeTweetId },
+              tweet: channelId ? { channelId } : {}
+            },
+            select: { stockId: true },
+            distinct: ["stockId"]
+          })
+        ).map((m) => m.stockId)
+  );
+
+  return candidates.filter((ticker) => {
+    const stockId = stockIdByTicker.get(ticker);
+    return !stockId || !seenStockIds.has(stockId);
+  });
+}

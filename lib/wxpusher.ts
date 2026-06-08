@@ -178,7 +178,18 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
 /**
  * 生成推送预览文字（出现在手机通知栏）
  */
-export function buildWxPusherSummary(analysis: AiAnalysis, authorUsername?: string): string {
+export function buildWxPusherSummary(
+  analysis: AiAnalysis,
+  authorUsername?: string,
+  newBullishAShareTickers?: string[]
+): string {
+  // 首次点名的看涨 A 股 → 用紧急标题抢占通知栏，提醒用户立刻查看
+  // （历史教训：今天一只新点名的 A 股在 10 分钟内涨停，普通标题容易被刷掉）
+  if (newBullishAShareTickers && newBullishAShareTickers.length > 0) {
+    const tickers = newBullishAShareTickers.slice(0, 2).join("/");
+    return `🚨【A股预警】首次点名 ${tickers}！速看，机会窗口可能很短`;
+  }
+
   const author = authorUsername ?? "Serenity";
   const bullish = analysis.bullish_stocks.slice(0, 3).map((s) => s.ticker).join(" ");
   const bearish = analysis.bearish_stocks.slice(0, 2).map((s) => s.ticker).join(" ");
