@@ -222,6 +222,7 @@ export default async function ChannelDashboardPage({
   ]);
 
   const total = tweets.length;
+  const aShareMentions = topMentions.filter((m) => /^\d{6}(\.(SZ|SH|SS))?$/i.test(m.ticker));
 
   return (
     <div className="min-h-screen bg-[#070d1a] text-slate-200 overflow-x-hidden">
@@ -573,6 +574,52 @@ export default async function ChannelDashboardPage({
                 </>
               )}
             </div>
+
+            {aShareMentions.length > 0 && (
+              <div className="rounded-xl border border-slate-800 bg-[#0d1628] p-4 shadow-xl">
+                <div className="mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                      🇨🇳 近30天提及 A股
+                    </span>
+                    <span className="rounded border border-teal-500/30 bg-teal-500/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-teal-400">
+                      {aShareMentions.length}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-600">点击股票代码查看详情 →</p>
+                </div>
+
+                <div className="space-y-1">
+                  {aShareMentions.map((m) => (
+                    <div key={m.ticker} className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-800/60">
+                      <div className="min-w-0 flex-1">
+                        {m.companyName && (
+                          <span className="mr-1.5 text-sm text-slate-300">{m.companyName}</span>
+                        )}
+                        <Link
+                          href={`/dashboard/${channelSlug}/stock/${m.ticker}`}
+                          className="font-mono text-sm font-bold text-slate-400 transition-colors hover:text-teal-400"
+                        >
+                          {m.ticker}
+                        </Link>
+                      </div>
+                      <div className="flex flex-shrink-0 items-center gap-1">
+                        {m.bullishCount > 0 && (
+                          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-emerald-400">
+                            ▲{m.bullishCount}
+                          </span>
+                        )}
+                        {m.bearishCount > 0 && (
+                          <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-red-400">
+                            ▼{m.bearishCount}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
