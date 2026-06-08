@@ -51,7 +51,8 @@ export function ChatWidget() {
     if (!trimmed || loading) return;
 
     const newMessages: Message[] = [...messages, { role: "user", content: trimmed }];
-    setMessages(newMessages);
+    const withPlaceholder: Message[] = [...newMessages, { role: "assistant", content: "" }];
+    setMessages(withPlaceholder);
     setInput("");
     setLoading(true);
     setError(null);
@@ -73,11 +74,10 @@ export function ChatWidget() {
 
       if (!res.ok || !res.body) {
         setError("请求失败，请稍后重试。");
+        setMessages(newMessages);
         setLoading(false);
         return;
       }
-
-      setMessages([...newMessages, { role: "assistant", content: "" }]);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
