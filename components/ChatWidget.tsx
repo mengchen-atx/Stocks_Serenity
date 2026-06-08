@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -13,7 +12,6 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export function ChatWidget() {
-  const { status } = useSession();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -113,8 +111,6 @@ export function ChatWidget() {
       setLoading(false);
     }
   }, [messages, loading]);
-
-  if (status !== "authenticated") return null;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
