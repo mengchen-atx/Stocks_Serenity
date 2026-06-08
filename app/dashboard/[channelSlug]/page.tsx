@@ -527,7 +527,7 @@ export default async function ChannelDashboardPage({
                     {topMentions.length}
                   </span>
                 </div>
-                <p className="mt-1 text-[10px] text-slate-600">点击股票代码查看详情 →</p>
+                <p className="mt-1.5 text-xs font-medium text-teal-400/80">👉 点击任意股票查看详情</p>
               </div>
 
               {topMentions.length === 0 ? (
@@ -586,7 +586,7 @@ export default async function ChannelDashboardPage({
                       {aShareMentions.length}
                     </span>
                   </div>
-                  <p className="mt-1 text-[10px] text-slate-600">点击股票代码查看详情 →</p>
+                  <p className="mt-1.5 text-xs font-medium text-teal-400/80">👉 点击任意股票查看详情</p>
                 </div>
 
                 <div className="space-y-1">
