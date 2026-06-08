@@ -272,6 +272,15 @@ export default async function ChannelDashboardPage({
               >
                 ⬡ Supply Chain
               </Link>
+              <a
+                href="https://raw.githubusercontent.com/muxuuu/serenity-skill/main/SKILL.md"
+                download="serenity-skill.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:flex items-center gap-1.5 rounded-md border border-teal-700/40 px-3 py-1.5 text-xs font-medium text-teal-500/80 hover:border-teal-600 hover:text-teal-400 hover:bg-teal-900/20 transition-colors"
+              >
+                ↓ Skill 文档
+              </a>
               <div className="hidden sm:block">
                 <SubscriptionInfoButton accesses={accessInfoList} />
               </div>
@@ -315,6 +324,15 @@ export default async function ChannelDashboardPage({
             >
               ⬡ Supply Chain
             </Link>
+            <a
+              href="https://raw.githubusercontent.com/muxuuu/serenity-skill/main/SKILL.md"
+              download="serenity-skill.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-shrink-0 flex items-center gap-1 rounded-md border border-teal-700/40 px-2.5 py-1 text-xs font-medium text-teal-500/80 hover:border-teal-600 hover:text-teal-400 transition-colors"
+            >
+              ↓ Skill 文档
+            </a>
             <div className="flex-shrink-0">
               <SubscriptionInfoButton accesses={accessInfoList} mobile />
             </div>
