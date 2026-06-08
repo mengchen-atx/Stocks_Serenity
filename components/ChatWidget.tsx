@@ -196,13 +196,17 @@ export function ChatWidget() {
                       : "bg-[#1e293b] text-slate-200 rounded-bl-sm"
                   }`}
                 >
-                  {msg.content}
-                  {msg.role === "assistant" && loading && i === messages.length - 1 && !msg.content && (
-                    <span className="inline-flex gap-0.5 items-center h-4">
-                      <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-bounce [animation-delay:0ms]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-bounce [animation-delay:150ms]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-bounce [animation-delay:300ms]" />
+                  {msg.role === "assistant" && loading && i === messages.length - 1 && !msg.content ? (
+                    <span className="flex items-center gap-2 text-teal-400/80">
+                      <span className="text-xs">正在思考</span>
+                      <span className="inline-flex gap-1 items-center">
+                        <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-bounce [animation-delay:0ms]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-bounce [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-bounce [animation-delay:300ms]" />
+                      </span>
                     </span>
+                  ) : (
+                    msg.content
                   )}
                 </div>
               </div>
