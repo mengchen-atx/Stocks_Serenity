@@ -13,6 +13,7 @@ const SUGGESTED_QUESTIONS = [
 
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
+  const [showHint, setShowHint] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -36,8 +37,14 @@ export function ChatWidget() {
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 100);
+      setShowHint(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowHint(false), 5000);
+    return () => clearTimeout(t);
+  }, []);
 
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -121,12 +128,26 @@ export function ChatWidget() {
 
   return (
     <>
+      {/* 提示气泡 */}
+      {!open && showHint && (
+        <div className="fixed bottom-28 right-5 z-50 max-w-[200px] rounded-xl bg-teal-500 px-3.5 py-2.5 text-xs font-medium text-white shadow-lg animate-bounce-once">
+          <div className="leading-snug">💡 有产业链/股票问题？<br />问我！</div>
+          <div className="absolute -bottom-1.5 right-6 h-3 w-3 rotate-45 bg-teal-500" />
+        </div>
+      )}
+
       {/* 悬浮按钮 */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-16 right-5 z-50 flex items-center gap-2 rounded-full bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:bg-teal-400 active:scale-95"
+        className="fixed bottom-16 right-5 z-50 flex items-center gap-2 rounded-full bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-teal-500/30 transition-all hover:bg-teal-400 active:scale-95"
         aria-label="打开研究助手"
       >
+        {!open && (
+          <span className="absolute -right-1 -top-1 flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-300 opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-teal-400" />
+          </span>
+        )}
         {open ? (
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -169,7 +190,7 @@ export function ChatWidget() {
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                  className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-all ${
                     msg.role === "user"
                       ? "bg-teal-600 text-white rounded-br-sm"
                       : "bg-[#1e293b] text-slate-200 rounded-bl-sm"
