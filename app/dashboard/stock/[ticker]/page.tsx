@@ -20,7 +20,15 @@ function formatCST(date: Date): string {
 }
 
 function stripTcoLinks(text: string): string {
-  return text.replace(/https?:\/\/t\.co\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+  // 注意：不能用 \s{2,} 整体压缩空白——会把作者的换行排版（一行一个股票）
+  // 也压成一行。只压缩行内多余空格，保留换行结构。
+  return text
+    .replace(/https?:\/\/t\.co\/\S+/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** "2025-08-15" → "2025年8月15日" */
@@ -414,7 +422,7 @@ export default async function StockDetailPage({
                 <div className="space-y-3 px-3 py-3 sm:px-5 sm:py-4">
 
                   {/* 原文 */}
-                  <p className="text-sm italic leading-relaxed text-slate-400">
+                  <p className="text-sm italic leading-relaxed text-slate-400 whitespace-pre-wrap">
                     &ldquo;{stripTcoLinks(tweet.content)}&rdquo;
                   </p>
 

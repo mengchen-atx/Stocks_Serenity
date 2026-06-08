@@ -45,14 +45,35 @@ type TwitterTweetsResponse = {
 // ─── URL 清理 ────────────────────────────────────────────────────────────────
 
 /**
- * 把推文正文里的 t.co 短链替换掉：
- * - 图片/媒体附件链接 (pic.twitter.com, twitter.com photo 等) -> 直接删除，图片单独展示
- * - 真实外部链接 -> 替换为 display_url (可读缩略形式，如 example.com/arti...)
- * - 末尾多余空白 -> 修剪掉
+ * 把推文正文里的 t.co 短链处理掉：
+ * - 图片/媒体附件链接 (pic.twitter.com, pic.x.com) -> 直接删除，图片单独展示
+ * - 其余链接 -> 替换为 display_url（可读缩略形式，如 example.com/arti... 或 2577.HK）
+ *
+ * 注意：X 会把形似域名的纯文本（如股票代码 "2577.HK"、"300376.SZ"，因为 .HK/.SZ
+ * 恰好是合法顶级域名）自动转换成 t.co 短链。如果只用正则把 t.co 链接整个删掉，
+ * 会连这些被误判的股票代码本身也一起删掉（推文原文里这种代码并没有 $ 前缀）。
+ * 所以必须依赖 entities.urls 里的 display_url 做精确替换，而不是粗暴删除。
  */
-function cleanTweetText(text: string): string {
-  // 删除所有 t.co 短链（含媒体链接和外部链接），只保留纯文字正文
-  return text.replace(/https?:\/\/t\.co\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+function cleanTweetText(text: string, urls: UrlEntity[] = []): string {
+  let result = text;
+
+  for (const u of urls) {
+    const isMediaPreview = /^pic\.(twitter\.com|x\.com)\//.test(u.display_url);
+    result = result.split(u.url).join(isMediaPreview ? "" : u.display_url);
+  }
+
+  // 兜底：清理 entities 未覆盖到的残留 t.co 短链（理论上不应再有）
+  result = result.replace(/https?:\/\/t\.co\/\S+/g, "");
+
+  // 规范化空白：保留作者的换行排版（一行一个股票），只压缩行内多余空格。
+  // 不能用 \s{2,} 整体压缩——很多行末尾带一个空格，"...B \n2. ..." 会被
+  // 误判为连续空白合并成一行，导致多个条目挤在同一行。
+  return result
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ─── Main fetch ───────────────────────────────────────────────────────────────
@@ -124,9 +145,10 @@ export async function fetchLatestTweets(params: {
           .map((k) => mediaMap.get(k))
           .filter((u): u is string => !!u);
 
-        // note_tweet.text 是长推文完整正文，优先使用
+        // note_tweet.text 是长推文完整正文，优先使用；entities 也要用对应来源的
         const rawText = tweet.note_tweet?.text ?? tweet.text;
-        const content = cleanTweetText(rawText);
+        const urlEntities = tweet.note_tweet?.entities?.urls ?? tweet.entities?.urls ?? [];
+        const content = cleanTweetText(rawText, urlEntities);
 
         return {
           tweetId: tweet.id,

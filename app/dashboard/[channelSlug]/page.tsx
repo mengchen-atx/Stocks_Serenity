@@ -15,7 +15,15 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function stripTcoLinks(text: string): string {
-  return text.replace(/https?:\/\/t\.co\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+  // 注意：不能用 \s{2,} 整体压缩空白——会把作者的换行排版（一行一个股票）
+  // 也压成一行。只压缩行内多余空格，保留换行结构。
+  return text
+    .replace(/https?:\/\/t\.co\/\S+/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function formatCST(date: Date): string {
@@ -414,7 +422,7 @@ export default async function ChannelDashboardPage({
                   <div className="space-y-3 px-3 py-3 sm:space-y-4 sm:px-5 sm:py-4">
                     <div>
                       <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-600">原文</p>
-                      <p className="text-sm italic leading-relaxed text-slate-400">
+                      <p className="text-sm italic leading-relaxed text-slate-400 whitespace-pre-wrap">
                         &ldquo;{stripTcoLinks(tweet.content)}&rdquo;
                       </p>
                       {tweet.imageUrls.length > 0 && (
@@ -431,7 +439,7 @@ export default async function ChannelDashboardPage({
                         {analysis.translated_content_cn && (
                           <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2.5 sm:px-4">
                             <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-blue-500/70">中文翻译</p>
-                            <p className="text-sm leading-relaxed text-blue-300/80">{analysis.translated_content_cn}</p>
+                            <p className="text-sm leading-relaxed text-blue-300/80 whitespace-pre-wrap">{analysis.translated_content_cn}</p>
                           </div>
                         )}
 

@@ -130,7 +130,7 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
 
     <div style="margin-bottom:12px;">
       <div style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">原文</div>
-      <div style="font-style:italic;color:#334155;font-size:14px;line-height:1.6;">"${escapeHtml(input.original)}"</div>
+      <div style="font-style:italic;color:#334155;font-size:14px;line-height:1.6;white-space:pre-wrap;">"${escapeHtml(input.original)}"</div>
       ${(input.imageUrls ?? []).map((url) =>
         `<img src="${url}" style="margin-top:10px;width:100%;max-width:560px;border-radius:6px;display:block;" />`
       ).join("")}
@@ -138,7 +138,7 @@ export function renderWxPusherHtml(input: WxPusherInput): string {
 
     <div style="margin-bottom:12px;padding:12px;background:white;border-radius:6px;border:1px solid #e2e8f0;">
       <div style="color:#64748b;font-size:12px;margin-bottom:4px;">中文翻译</div>
-      <div style="font-size:14px;line-height:1.7;color:#1e293b;">${escapeHtml(analysis.translated_content_cn || analysis.summary_cn)}</div>
+      <div style="font-size:14px;line-height:1.7;color:#1e293b;white-space:pre-wrap;">${escapeHtml(analysis.translated_content_cn || analysis.summary_cn)}</div>
     </div>
 
     <div style="margin-bottom:16px;padding:12px;background:white;border-radius:6px;border:1px solid #e2e8f0;">
