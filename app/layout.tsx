@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
+import { ChatWidget } from "@/components/ChatWidget";
 
 export const metadata: Metadata = {
   title: "Serenity Intelligence — AI Infra Narrative Terminal",
@@ -24,7 +25,10 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          {children}
+          <ChatWidget />
+        </SessionProvider>
         <footer className="text-center px-4 py-3 text-[11px] border-t border-slate-800 bg-[#0f172a] text-slate-500 tracking-wide">
           内容仅用于信息整理和研究辅助，不构成投资建议。
         </footer>

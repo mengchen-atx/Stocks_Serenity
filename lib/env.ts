@@ -1,12 +1,17 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  // ─── AI ─────────────────────────────────────────────────────────────────────
+  // ─── AI（分析流水线，当前用 DeepSeek v4-flash）────────────────────────────
   OPENAI_API_KEY: z.string().optional(),
-  OPENAI_BASE_URL: z.string().url().optional(), // 自定义 OpenAI 兼容接口（如小米 MiMo）
+  OPENAI_BASE_URL: z.string().url().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_PROVIDER: z.enum(["openai", "anthropic", "gemini"]).default("openai"),
   AI_MODEL: z.string().default("gpt-4o"),
+
+  // ─── 聊天对话（Xiaomi MiMo，供用户交互使用，符合小米套餐条款）──────────
+  XIAOMI_API_KEY: z.string().optional(),
+  XIAOMI_BASE_URL: z.string().url().optional(),
+  XIAOMI_CHAT_MODEL: z.string().default("mimo-v2.5"),
 
   // ─── Gemini ──────────────────────────────────────────────────────────────────
   GEMINI_API_KEY: z.string().optional(),
