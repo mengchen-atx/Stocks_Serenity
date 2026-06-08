@@ -24,7 +24,7 @@ export function ChatWidget() {
     if (open && messages.length === 0) {
       setMessages([{
         role: "assistant",
-        content: "你好！我是 Serenity 研究助手，专注产业链瓶颈分析。\n\n我提炼了 Serenity 所有公开帖子的研究方法论，内置成 AI skill，帮你系统拆解产业链、定位供应链卡点、筛选 A股/港股/美股候选。\n\n可以问我：\n• 某个主题/行业的产业链怎么拆\n• 哪些环节和公司最接近真实卡点\n• 挑战某只股票的逻辑\n• A股/港股/美股候选对比\n\n如需查看或下载原始 skill 文档，请访问：\nhttps://github.com/muxuuu/serenity-skill\n\n有什么想研究的？"
+        content: "你好！我是 Serenity 研究助手，专注产业链瓶颈分析。\n\n我提炼了 Serenity 所有公开帖子的研究方法论，内置成 AI skill，帮你系统拆解产业链、定位供应链卡点、筛选 A股/港股/美股候选。\n\n可以问我：\n• 某个主题/行业的产业链怎么拆\n• 哪些环节和公司最接近真实卡点\n• 挑战某只股票的逻辑\n• A股/港股/美股候选对比\n\n如需下载原始 skill 文档：\nhttps://pan.baidu.com/s/1DFkqdPDA4LFlijGv_NWa8g?pwd=ca54\n\n有什么想研究的？"
       }]);
     }
   }, [open, messages.length]);
