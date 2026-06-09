@@ -122,14 +122,21 @@ const geminiResponseSchema: Schema = {
 // ─── Provider routing ─────────────────────────────────────────────────────────
 
 export async function analyzeTweetWithAi(content: string): Promise<AiAnalysis> {
-  switch (env.AI_PROVIDER) {
-    case "anthropic":
-      return analyzeWithAnthropic(content);
-    case "gemini":
-      return analyzeWithGemini(content);
-    default:
-      return analyzeWithOpenAI(content);
+  const MAX_ATTEMPTS = 3;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      switch (env.AI_PROVIDER) {
+        case "anthropic": return await analyzeWithAnthropic(content);
+        case "gemini":    return await analyzeWithGemini(content);
+        default:          return await analyzeWithOpenAI(content);
+      }
+    } catch (err) {
+      lastError = err;
+      console.warn(`[ai] analysis attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err instanceof Error ? err.message : err);
+    }
   }
+  throw lastError;
 }
 
 // ─── OpenAI ───────────────────────────────────────────────────────────────────
@@ -244,10 +251,10 @@ function extractJson(raw: string): string {
   const codeBlockMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
   if (codeBlockMatch?.[1]) trimmed = codeBlockMatch[1].trim();
 
-  // Replace Chinese curly quotes (“ / ”) with escaped ASCII double quotes.
-  // Some models (e.g. Xiaomi MiMo) emit " and " inside JSON string values,
-  // which breaks JSON.parse because they look like string delimiters.
-  trimmed = trimmed.replace(/“/g, '\\"').replace(/”/g, '\\"');
+  // Replace Unicode curly/smart quotes with escaped ASCII double quotes.
+  // AI models writing Chinese sometimes emit “ “ ' ' inside JSON string values,
+  // which breaks JSON.parse. Cover all common variants.
+  trimmed = trimmed.replace(/[“”‘’«»＂]/g, '\\”');
 
   // If it starts with { it's likely clean JSON
   if (trimmed.startsWith("{")) return trimmed;
