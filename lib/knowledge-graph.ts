@@ -52,7 +52,10 @@ export const THEME_TICKERS: ThemeTickers = {
   // ─── Emerging / Meme AI ──────────────────────────────────────────────────────
   EDGE_AI: ["NVDA", "QCOM", "INTC", "MCHP", "MPWR"],
   AI_PC: ["INTC", "AMD", "QCOM", "MSFT", "AAPL"],
-  AUTONOMOUS_VEHICLE: ["TSLA", "MOBILEYE", "GOOGL", "BAIDU"]
+  AUTONOMOUS_VEHICLE: ["TSLA", "MOBILEYE", "GOOGL", "BAIDU"],
+
+  // ─── Neocloud (AI-native cloud) ──────────────────────────────────────────────
+  NEOCLOUD: ["CRWV", "NBIS", "CORZ", "WULF"],
 };
 
 // ─── Ticker → Themes mapping (reverse index) ─────────────────────────────────
@@ -99,8 +102,46 @@ export const THEME_LABELS_CN: Record<string, string> = {
   CHINA_SEMICONDUCTOR: "中国半导体",
   EDGE_AI: "边缘 AI",
   AI_PC: "AI PC",
-  AUTONOMOUS_VEHICLE: "自动驾驶"
+  AUTONOMOUS_VEHICLE: "自动驾驶",
+  NEOCLOUD: "Neocloud AI原生云"
 };
+
+// ─── Market terminology glossary ─────────────────────────────────────────────
+// Only add entries that are stable, publicly verifiable facts.
+// Do NOT add speculative or inferred meanings.
+
+export const MARKET_GLOSSARY = [
+  // Neocloud
+  {
+    term: "neocloud / neoclouds",
+    cn: "AI原生云厂商",
+    detail: "以GPU集群为核心基础设施、专门服务AI训练/推理的新型云厂商，区别于传统hyperscaler（微软/谷歌/亚马逊）。代表公司：CoreWeave（$CRWV）、Nebius（$NBIS）。",
+  },
+  // Leopold / Situational Awareness
+  {
+    term: "Leopold / Situational Awareness",
+    cn: "利奥波德 / 形势感知",
+    detail: "Leopold Aschenbrenner，前OpenAI研究员，创办Situational Awareness投研机构，因预测AI进展准确而在AI投资圈知名。其选股集中于AI基础设施（$NBIS、$BE、$TE等）。",
+  },
+  // Korean market code format
+  {
+    term: "韩国股票代码格式",
+    cn: "韩国市场代码",
+    detail: "韩国股票代码为6位数字，部分ETF/期货/股票类别会附加字母后缀，如285A、069500K、122630。翻译时保留原代码，无需加问号或注释。",
+  },
+  // "1K level" for stock prices
+  {
+    term: "1K level / 1K",
+    cn: "1000点/1000美元关口",
+    detail: "交易员口语：1K = 1000，如'$MU at the 1K level'表示美光股价接近1000美元。不是笔误，直接翻译为'1000'即可，禁止加'可能是笔误'等注释。",
+  },
+  // buybacks
+  {
+    term: "50% buybacks of their equity",
+    cn: "回购50%流通股",
+    detail: "指公司计划回购相当于其流通股50%的份额，是超大规模回购承诺，属看涨信号。",
+  },
+] as const;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -152,8 +193,16 @@ export function buildKnowledgeContext(): string {
 
   lines.push(
     "",
-    "IMPORTANT: Only recommend tickers from this list unless you are highly confident a ticker exists and is directly relevant. Verify all tickers are real US-listed stocks."
+    "IMPORTANT: Only recommend tickers from this list unless you are highly confident a ticker exists and is directly relevant. Verify all tickers are real US-listed stocks.",
+    "",
+    "=== Market Terminology Glossary ===",
+    "Use these definitions to translate accurately. Do NOT add speculative notes or question existing market codes/numbers.",
+    ""
   );
+
+  for (const entry of MARKET_GLOSSARY) {
+    lines.push(`【${entry.term}】→ ${entry.cn}：${entry.detail}`);
+  }
 
   return lines.join("\n");
 }
