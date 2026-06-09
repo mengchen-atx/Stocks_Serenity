@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { jsonrepair } from "jsonrepair";
 import { GoogleGenerativeAI, SchemaType, type Schema } from "@google/generative-ai";
 import { z } from "zod";
 import { env } from "@/lib/env";
@@ -229,7 +230,12 @@ async function analyzeWithGemini(content: string): Promise<AiAnalysis> {
 
 function normalizeAnalysis(raw: string): AiAnalysis {
   const json = extractJson(raw);
-  const parsed = JSON.parse(json);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    parsed = JSON.parse(jsonrepair(json));
+  }
   const analysis = aiAnalysisSchema.parse(parsed);
   return {
     ...analysis,
