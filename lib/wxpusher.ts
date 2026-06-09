@@ -202,6 +202,46 @@ export function buildWxPusherSummary(
     : `${author} 发布新观点`;
 }
 
+/**
+ * AI 解析失败时的兜底消息：直接推送原始推文，不附 AI 分析。
+ */
+export function renderWxPusherRawFallback(params: {
+  original: string;
+  sourceUrl?: string | null;
+  authorUsername?: string;
+  tweetCreatedAt?: Date;
+  imageUrls?: string[];
+}): string {
+  const author = params.authorUsername ?? "Serenity";
+  const cstTime = params.tweetCreatedAt ? formatCST(params.tweetCreatedAt) : null;
+  const sourceLink = params.sourceUrl
+    ? `<a href="${params.sourceUrl}" style="color:#2563eb;font-size:12px;">查看原文 →</a>`
+    : "";
+  const images = (params.imageUrls ?? [])
+    .map(url => `<img src="${url}" style="margin-top:10px;width:100%;max-width:560px;border-radius:6px;display:block;" />`)
+    .join("");
+
+  return `
+<div style="font-family:-apple-system,sans-serif;max-width:600px;color:#1a1a1a;">
+  <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);color:white;padding:16px;border-radius:8px 8px 0 0;">
+    <div style="font-size:18px;font-weight:bold;">🚨 @${author} 最新观点</div>
+    ${cstTime ? `<div style="font-size:12px;color:#94a3b8;margin-top:4px;">🕐 ${cstTime}</div>` : ""}
+  </div>
+  <div style="padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;">
+    <div style="margin-bottom:12px;padding:8px 12px;background:#fefce8;border:1px solid #fde047;border-radius:6px;font-size:12px;color:#854d0e;">
+      ⚠️ AI 分析暂时不可用，以下为原始推文
+    </div>
+    <div style="font-style:italic;color:#334155;font-size:14px;line-height:1.6;white-space:pre-wrap;">"${escapeHtml(params.original)}"</div>
+    ${images}
+    <div style="margin-top:12px;text-align:right;">${sourceLink}</div>
+    <div style="margin-top:16px;padding:12px 16px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;text-align:center;">
+      <span style="font-size:12px;color:#0369a1;">📊 查看所有历史分析 → </span>
+      <a href="https://alphaline.fit/auth/wxpusher" style="font-size:12px;color:#2563eb;font-weight:600;">alphaline.fit</a>
+    </div>
+  </div>
+</div>`.trim();
+}
+
 // ─── Send ─────────────────────────────────────────────────────────────────────
 
 /**

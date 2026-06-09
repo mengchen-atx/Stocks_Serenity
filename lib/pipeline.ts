@@ -17,6 +17,7 @@ import { sendEmailAlert } from "@/lib/email";
 import {
   buildWxPusherSummary,
   renderWxPusherHtml,
+  renderWxPusherRawFallback,
   sendWxPusherTopicBroadcast,
   sendWxPusherToUids,
   fetchTopicSubscriberUids,
@@ -135,25 +136,50 @@ export async function handleTweet(
       }
     }));
 
-  const analysis: AiAnalysis = saved.aiAnalysis
+  let analysis: AiAnalysis | null = saved.aiAnalysis
     ? (saved.aiAnalysis as AiAnalysis)
-    : await analyzeTweetWithAi(tweet.content);
+    : null;
+
+  if (!analysis) {
+    try {
+      analysis = await analyzeTweetWithAi(tweet.content);
+      await prisma.tweet.update({
+        where: { id: saved.id },
+        data: { translatedContent: analysis.translated_content_cn, aiAnalysis: analysis }
+      });
+      await upsertMentions(saved.id, analysis);
+    } catch (err) {
+      logger.warn({ err }, "[pipeline] AI analysis failed after retries — falling back to raw push");
+      // AI 彻底失败：直接推原文，不阻塞推送
+      const fallbackContent = renderWxPusherRawFallback({
+        original: tweet.content,
+        sourceUrl: tweet.sourceUrl,
+        authorUsername: tweet.authorUsername,
+        tweetCreatedAt: tweet.tweetCreatedAt,
+        imageUrls: tweet.imageUrls ?? [],
+      });
+      const fallbackSummary = `${tweet.authorUsername ?? "Serenity"} 发布新观点（速览原文）`;
+      const channels = enabledPushChannels();
+      let sentOk = false;
+      for (const channel of channels) {
+        if (channel !== PushChannel.WXPUSHER) continue;
+        try {
+          const r = await dispatchWxPusherRaw(fallbackContent, fallbackSummary, tweet, { channelTopicId, channelId });
+          sentOk ||= r.ok;
+        } catch (e) {
+          logger.error({ e }, "[pipeline] raw fallback push failed");
+        }
+      }
+      if (sentOk) await prisma.tweet.update({ where: { id: saved.id }, data: { pushed: true } });
+      return { analyzed: false, pushed: sentOk, skipped: false };
+    }
+  }
 
   const tickers = [
     ...analysis.bullish_stocks.map((s) => s.ticker),
     ...analysis.bearish_stocks.map((s) => s.ticker)
   ];
   const stocks = await enrichStocks(tickers);
-
-  await prisma.tweet.update({
-    where: { id: saved.id },
-    data: {
-      translatedContent: analysis.translated_content_cn,
-      aiAnalysis: analysis
-    }
-  });
-
-  await upsertMentions(saved.id, analysis);
 
   const channels = enabledPushChannels();
   if (channels.length === 0) {
@@ -593,6 +619,28 @@ async function syncWxPusherSubscribers(): Promise<void> {
  * 正常情况下 webhook 的 waitUntil 会处理完；这里是兜底，防止 Vercel 函数超时中断后任务卡死。
  * 每次最多处理 1 个任务（避免占用 cron 时间过长）。
  */
+async function dispatchWxPusherRaw(
+  content: string,
+  summary: string,
+  tweet: TweetInput,
+  extra?: { channelTopicId?: string | null; channelId?: string }
+): Promise<{ ok: boolean }> {
+  const channelTopicId = extra?.channelTopicId ?? null;
+  const channelId = extra?.channelId ?? null;
+  const adminUids = getAdminUids();
+  let ok = false;
+  if (channelTopicId) {
+    const r = await sendWxPusherTopicBroadcast(content, summary, tweet.sourceUrl, channelTopicId);
+    ok ||= r.ok;
+  }
+  const manualUids = await buildManualPushUids(channelId, channelTopicId !== null, adminUids);
+  if (manualUids.length > 0) {
+    const r = await sendWxPusherToUids(manualUids, content, summary, tweet.sourceUrl);
+    ok ||= r.ok;
+  }
+  return { ok };
+}
+
 async function retryPendingHistoryJobs(): Promise<void> {
   const staleThreshold = new Date(Date.now() - 10 * 60 * 1000); // 10 分钟前还没完成的
 
