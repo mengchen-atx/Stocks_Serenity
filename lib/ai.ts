@@ -123,6 +123,23 @@ const geminiResponseSchema: Schema = {
 // ─── Provider routing ─────────────────────────────────────────────────────────
 
 export async function analyzeTweetWithAi(content: string): Promise<AiAnalysis> {
+  // If Xiaomi backup is configured and primary is OpenAI (DeepSeek), race them in parallel.
+  // First successful result wins. This defends against deterministic JSON failures from one provider.
+  if (env.AI_PROVIDER === "openai" && env.XIAOMI_API_KEY && env.XIAOMI_BASE_URL) {
+    try {
+      return await Promise.any([
+        analyzeWithOpenAI(content).then(r => { console.log("[ai] primary (DeepSeek) won the race"); return r; }),
+        analyzeWithXiaomi(content).then(r => { console.log("[ai] backup (Xiaomi mimo-v2.5) won the race"); return r; })
+      ]);
+    } catch (aggErr) {
+      // Both failed — log both errors and throw
+      const errors = aggErr instanceof AggregateError ? aggErr.errors : [aggErr];
+      console.error("[ai] both primary and backup failed:", errors.map((e: unknown) => e instanceof Error ? e.message : e));
+      throw errors[0];
+    }
+  }
+
+  // Single-provider path (non-OpenAI, or Xiaomi not configured)
   const MAX_ATTEMPTS = 3;
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -177,6 +194,28 @@ async function analyzeWithOpenAI(content: string): Promise<AiAnalysis> {
 
   const raw = completion.choices[0]?.message.content;
   if (!raw) throw new Error("OpenAI returned empty content");
+  return normalizeAnalysis(raw);
+}
+
+// ─── Xiaomi MiMo (backup racing provider) ────────────────────────────────────
+
+async function analyzeWithXiaomi(content: string): Promise<AiAnalysis> {
+  if (!env.XIAOMI_API_KEY || !env.XIAOMI_BASE_URL) {
+    throw new Error("XIAOMI_API_KEY and XIAOMI_BASE_URL are required for Xiaomi backup");
+  }
+
+  const client = new OpenAI({ apiKey: env.XIAOMI_API_KEY, baseURL: env.XIAOMI_BASE_URL });
+  const completion = await client.chat.completions.create({
+    model: "mimo-v2.5",
+    temperature: 0.1,
+    messages: [
+      { role: "system", content: INVESTMENT_ANALYST_SYSTEM_PROMPT },
+      { role: "user", content: buildTweetAnalysisPrompt(content) }
+    ]
+  });
+
+  const raw = completion.choices[0]?.message.content;
+  if (!raw) throw new Error("Xiaomi returned empty content");
   return normalizeAnalysis(raw);
 }
 
