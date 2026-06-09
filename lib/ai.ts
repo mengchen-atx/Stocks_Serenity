@@ -174,17 +174,21 @@ async function analyzeWithOpenAI(content: string): Promise<AiAnalysis> {
 
   const client = new OpenAI(clientOptions);
 
-  // Custom providers (e.g. Xiaomi MiMo) may not support response_format at all.
-  // Standard OpenAI uses strict json_schema mode.
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: INVESTMENT_ANALYST_SYSTEM_PROMPT },
     { role: "user", content: buildTweetAnalysisPrompt(content) }
   ];
 
-  // Custom providers (e.g. Xiaomi MiMo) don't support response_format.
-  // Standard OpenAI uses strict json_schema mode for reliable structured output.
+  // DeepSeek and other OpenAI-compatible providers support json_object mode,
+  // which forces the API to return valid JSON regardless of model output.
+  // Standard OpenAI supports the stricter json_schema mode.
   const completion = env.OPENAI_BASE_URL
-    ? await client.chat.completions.create({ model: env.AI_MODEL, temperature: 0.1, messages })
+    ? await client.chat.completions.create({
+        model: env.AI_MODEL,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages
+      })
     : await client.chat.completions.create({
         model: env.AI_MODEL,
         temperature: 0.1,
@@ -208,6 +212,7 @@ async function analyzeWithXiaomi(content: string): Promise<AiAnalysis> {
   const completion = await client.chat.completions.create({
     model: "mimo-v2.5",
     temperature: 0.1,
+    response_format: { type: "json_object" },
     messages: [
       { role: "system", content: INVESTMENT_ANALYST_SYSTEM_PROMPT },
       { role: "user", content: buildTweetAnalysisPrompt(content) }
