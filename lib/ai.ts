@@ -19,7 +19,8 @@ const aiAnalysisSchema = z.object({
   bullish_stocks: z.array(stockSignalSchema).default([]),
   bearish_stocks: z.array(stockSignalSchema).default([]),
   sector_tags: z.array(z.string().trim()).default([]),
-  confidence: z.number().int().min(0).max(100).default(0)
+  // Models sometimes return 0.85 (float 0-1) instead of 85 (int 0-100)
+  confidence: z.number().transform(v => v <= 1 ? Math.round(v * 100) : Math.round(Math.min(100, Math.max(0, v)))).default(0)
 });
 
 // ─── OpenAI JSON schema (strict mode) ────────────────────────────────────────
