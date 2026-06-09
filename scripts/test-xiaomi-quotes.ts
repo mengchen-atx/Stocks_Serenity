@@ -118,7 +118,7 @@ async function testTweet(client: OpenAI, index: number, tweet: string): Promise<
       usedRepair = true;
       return { pass: true, usedRepair: true, rawSnippet };
     } catch (e2) {
-      return { pass: false, error: e2 instanceof Error ? e2.message : String(e2), rawSnippet };
+      return { pass: false, usedRepair: false, error: e2 instanceof Error ? e2.message : String(e2), rawSnippet };
     }
   }
 }

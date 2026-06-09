@@ -288,6 +288,15 @@ function normalizeAnalysis(raw: string): AiAnalysis {
 /**
  * Robustly extract JSON from model output.
  * Handles raw JSON, ```json code blocks, and JSON embedded in explanatory text.
+ *
+ * LLMs commonly emit these invalid characters inside JSON string values:
+ *   "   – unescaped double quote  (e.g. "harvesting the leeks")
+ *   \n  – literal newline         (multi-line tweet copied verbatim)
+ *   \r  – literal carriage return
+ *   \t  – literal tab
+ *   \   – unescaped backslash     (LaTeX, Windows paths)
+ * We fix them with a state-machine pass that only rewrites characters
+ * that are inside a JSON string literal.
  */
 function extractJson(raw: string): string {
   let trimmed = raw.trim();
@@ -296,23 +305,55 @@ function extractJson(raw: string): string {
   const codeBlockMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
   if (codeBlockMatch?.[1]) trimmed = codeBlockMatch[1].trim();
 
-  // Replace Unicode curly/smart quotes with escaped ASCII double quotes.
-  // AI models writing Chinese sometimes emit “ “ ' ' inside JSON string values,
-  // which breaks JSON.parse. Cover all common variants.
-  trimmed = trimmed.replace(/[“”‘’«»＂]/g, '\\”');
-
-  // If it starts with { it's likely clean JSON
-  if (trimmed.startsWith("{")) return trimmed;
-
-  // Try to find the first complete JSON object in the text
-  const jsonStart = trimmed.indexOf("{");
+  // Locate the outermost JSON object
+  const jsonStart = trimmed.startsWith("{") ? 0 : trimmed.indexOf("{");
   const jsonEnd = trimmed.lastIndexOf("}");
-  if (jsonStart !== -1 && jsonEnd > jsonStart) {
-    return trimmed.slice(jsonStart, jsonEnd + 1);
+  if (jsonStart === -1 || jsonEnd <= jsonStart) return trimmed;
+  const candidate = trimmed.slice(jsonStart, jsonEnd + 1);
+
+  // State-machine: walk character-by-character and fix unescaped
+  // dangerous characters only when we're inside a JSON string value.
+  const out: string[] = [];
+  let inString = false;
+  let i = 0;
+  while (i < candidate.length) {
+    const ch = candidate[i];
+
+    if (inString) {
+      if (ch === "\\") {
+        // Already-escaped sequence — copy both chars verbatim
+        out.push(ch);
+        i++;
+        if (i < candidate.length) out.push(candidate[i]);
+      } else if (ch === '"') {
+        // Closing quote — end of string
+        inString = false;
+        out.push(ch);
+      } else if (ch === "\n") {
+        out.push("\\n");
+      } else if (ch === "\r") {
+        out.push("\\r");
+      } else if (ch === "\t") {
+        out.push("\\t");
+      } else if (ch === "\u201c" || ch === "\u201d" || ch === "\u201e" ||
+                 ch === "\u2018" || ch === "\u2019" || ch === "\uff02") {
+        // Unicode curly/fullwidth quotes inside a string value -> escaped "
+        out.push('\\"');
+      } else {
+        out.push(ch);
+      }
+    } else {
+      if (ch === '"') {
+        inString = true;
+        out.push(ch);
+      } else {
+        out.push(ch);
+      }
+    }
+    i++;
   }
 
-  // Give up and let JSON.parse throw a meaningful error
-  return trimmed;
+  return out.join("");
 }
 
 function dedupeSignals(signals: AiAnalysis["bullish_stocks"]) {
