@@ -67,7 +67,13 @@ const envSchema = z.object({
   // ─── App ─────────────────────────────────────────────────────────────────────
   CRON_SECRET: z.string().optional(),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
-  APP_NAME: z.string().default("Serenity Intelligence")
+  APP_NAME: z.string().default("Serenity Intelligence"),
+
+  // ─── Xiaohongshu automation ──────────────────────────────────────────────────
+  // APP_URL: base URL for card screenshots (default: APP_BASE_URL)
+  APP_URL: z.string().url().optional(),
+  // CARD_SECRET_TOKEN: guards /card/[tweetId] from public access
+  CARD_SECRET_TOKEN: z.string().optional()
 });
 
 export type Env = z.infer<typeof envSchema>;

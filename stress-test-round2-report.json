@@ -1,0 +1,652 @@
+{
+  "ts": "2026-06-09T07:39:59.720Z",
+  "total": 80,
+  "passed": 80,
+  "failed": 0,
+  "raceWins": {
+    "DeepSeek": 54,
+    "Xiaomi": 26
+  },
+  "results": [
+    {
+      "n": 1,
+      "label": "空字符串",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2774
+    },
+    {
+      "n": 2,
+      "label": "纯空白",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2757
+    },
+    {
+      "n": 3,
+      "label": "单个ticker",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3575
+    },
+    {
+      "n": 4,
+      "label": "单个emoji",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2744
+    },
+    {
+      "n": 5,
+      "label": "仅数字",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 1836
+    },
+    {
+      "n": 6,
+      "label": "仅URL",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 2073
+    },
+    {
+      "n": 7,
+      "label": "仅hashtag",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3141
+    },
+    {
+      "n": 8,
+      "label": "仅at符号",
+      "category": "边界内容",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 2442
+    },
+    {
+      "n": 9,
+      "label": "粗体斜体删除线",
+      "category": "Markdown格式",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3706
+    },
+    {
+      "n": 10,
+      "label": "多级标题",
+      "category": "Markdown格式",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3471
+    },
+    {
+      "n": 11,
+      "label": "代码块嵌套引号",
+      "category": "Markdown格式",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3000
+    },
+    {
+      "n": 12,
+      "label": "引用块",
+      "category": "Markdown格式",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3879
+    },
+    {
+      "n": 13,
+      "label": "表格格式",
+      "category": "Markdown格式",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 5188
+    },
+    {
+      "n": 14,
+      "label": "HTML基础实体",
+      "category": "XML/HTML实体",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3200
+    },
+    {
+      "n": 15,
+      "label": "数字字符实体",
+      "category": "XML/HTML实体",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3019
+    },
+    {
+      "n": 16,
+      "label": "Unicode实体",
+      "category": "XML/HTML实体",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2934
+    },
+    {
+      "n": 17,
+      "label": "XML标签混合",
+      "category": "XML/HTML实体",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 4777
+    },
+    {
+      "n": 18,
+      "label": "模板字面量语法",
+      "category": "代码模板语法",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2998
+    },
+    {
+      "n": 19,
+      "label": "正则表达式",
+      "category": "代码模板语法",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3093
+    },
+    {
+      "n": 20,
+      "label": "SQL注入模式",
+      "category": "代码模板语法",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 2673
+    },
+    {
+      "n": 21,
+      "label": "Shell命令模式",
+      "category": "代码模板语法",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3922
+    },
+    {
+      "n": 22,
+      "label": "JSON embedded in tweet",
+      "category": "代码模板语法",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4423
+    },
+    {
+      "n": 23,
+      "label": "纯阿拉伯语",
+      "category": "RTL语言",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 7239
+    },
+    {
+      "n": 24,
+      "label": "纯希伯来语",
+      "category": "RTL语言",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3721
+    },
+    {
+      "n": 25,
+      "label": "阿拉伯语+股票代码",
+      "category": "RTL语言",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 2872
+    },
+    {
+      "n": 26,
+      "label": "拉丁西里尔混合词",
+      "category": "混合编码",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3893
+    },
+    {
+      "n": 27,
+      "label": "全角ASCII",
+      "category": "混合编码",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3191
+    },
+    {
+      "n": 28,
+      "label": "零宽连接符",
+      "category": "混合编码",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3279
+    },
+    {
+      "n": 29,
+      "label": "颠倒文字",
+      "category": "混合编码",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 2733
+    },
+    {
+      "n": 30,
+      "label": "组合音调符号",
+      "category": "混合编码",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3240
+    },
+    {
+      "n": 31,
+      "label": "2000字符推文",
+      "category": "极端长度",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 8727
+    },
+    {
+      "n": 32,
+      "label": "3500字符推文",
+      "category": "极端长度",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 12124
+    },
+    {
+      "n": 33,
+      "label": "100个感叹号",
+      "category": "高密度标点",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3246
+    },
+    {
+      "n": 34,
+      "label": "极密集标点混合",
+      "category": "高密度标点",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4774
+    },
+    {
+      "n": 35,
+      "label": "ASCII艺术+颜文字",
+      "category": "高密度标点",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3431
+    },
+    {
+      "n": 36,
+      "label": "重复符号序列",
+      "category": "高密度标点",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3082
+    },
+    {
+      "n": 37,
+      "label": "各种数字格式",
+      "category": "数字格式",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3726
+    },
+    {
+      "n": 38,
+      "label": "科学计数法",
+      "category": "数字格式",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3676
+    },
+    {
+      "n": 39,
+      "label": "负数和范围",
+      "category": "数字格式",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2925
+    },
+    {
+      "n": 40,
+      "label": "日期格式混合",
+      "category": "数字格式",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4492
+    },
+    {
+      "n": 41,
+      "label": "经典双引号 #1",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3726
+    },
+    {
+      "n": 42,
+      "label": "经典双引号 #2",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3589
+    },
+    {
+      "n": 43,
+      "label": "经典双引号 #3",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3847
+    },
+    {
+      "n": 44,
+      "label": "经典双引号 #4",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 2813
+    },
+    {
+      "n": 45,
+      "label": "经典双引号 #5",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3167
+    },
+    {
+      "n": 46,
+      "label": "经典双引号 #6",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3359
+    },
+    {
+      "n": 47,
+      "label": "经典双引号 #7",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3667
+    },
+    {
+      "n": 48,
+      "label": "经典双引号 #8",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3912
+    },
+    {
+      "n": 49,
+      "label": "经典双引号 #9",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3223
+    },
+    {
+      "n": 50,
+      "label": "经典双引号 #10",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 3288
+    },
+    {
+      "n": 51,
+      "label": "经典双引号 #11",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2979
+    },
+    {
+      "n": 52,
+      "label": "经典双引号 #12",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3481
+    },
+    {
+      "n": 53,
+      "label": "经典双引号 #13",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3611
+    },
+    {
+      "n": 54,
+      "label": "经典双引号 #14",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 6489
+    },
+    {
+      "n": 55,
+      "label": "经典双引号 #15",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 5938
+    },
+    {
+      "n": 56,
+      "label": "经典双引号 #16",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4066
+    },
+    {
+      "n": 57,
+      "label": "经典双引号 #17",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3843
+    },
+    {
+      "n": 58,
+      "label": "经典双引号 #18",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3411
+    },
+    {
+      "n": 59,
+      "label": "经典双引号 #19",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 2950
+    },
+    {
+      "n": 60,
+      "label": "经典双引号 #20",
+      "category": "稳定性×20",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4156
+    },
+    {
+      "n": 61,
+      "label": "JSON破坏 #1",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4474
+    },
+    {
+      "n": 62,
+      "label": "JSON破坏 #2",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3262
+    },
+    {
+      "n": 63,
+      "label": "JSON破坏 #3",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4489
+    },
+    {
+      "n": 64,
+      "label": "JSON破坏 #4",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3300
+    },
+    {
+      "n": 65,
+      "label": "JSON破坏 #5",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3549
+    },
+    {
+      "n": 66,
+      "label": "JSON破坏 #6",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 5077
+    },
+    {
+      "n": 67,
+      "label": "JSON破坏 #7",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4042
+    },
+    {
+      "n": 68,
+      "label": "JSON破坏 #8",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4439
+    },
+    {
+      "n": 69,
+      "label": "JSON破坏 #9",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3798
+    },
+    {
+      "n": 70,
+      "label": "JSON破坏 #10",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 3545
+    },
+    {
+      "n": 71,
+      "label": "多语言引号 #1",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 5672
+    },
+    {
+      "n": 72,
+      "label": "多语言引号 #2",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4996
+    },
+    {
+      "n": 73,
+      "label": "多语言引号 #3",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 8415
+    },
+    {
+      "n": 74,
+      "label": "多语言引号 #4",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 6509
+    },
+    {
+      "n": 75,
+      "label": "多语言引号 #5",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4526
+    },
+    {
+      "n": 76,
+      "label": "多语言引号 #6",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 5917
+    },
+    {
+      "n": 77,
+      "label": "多语言引号 #7",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 4835
+    },
+    {
+      "n": 78,
+      "label": "多语言引号 #8",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 5045
+    },
+    {
+      "n": 79,
+      "label": "多语言引号 #9",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "Xiaomi",
+      "ms": 7843
+    },
+    {
+      "n": 80,
+      "label": "多语言引号 #10",
+      "category": "稳定性×10",
+      "ok": true,
+      "winner": "DeepSeek",
+      "ms": 5141
+    }
+  ]
+}

@@ -135,6 +135,7 @@ const GRANT_DAY_OPTIONS = [
 ];
 
 const DAY_OPTIONS = [
+  { label: "1 天",   value: 1 },
   { label: "7 天",   value: 7 },
   { label: "14 天",  value: 14 },
   { label: "30 天",  value: 30 },
@@ -173,6 +174,7 @@ function ChannelAccessManager() {
   const [welcomeSent, setWelcomeSent] = useState<Record<string, boolean>>({});
   const [editOpen, setEditOpen] = useState<Record<string, { dash?: boolean; push?: boolean }>>({});
   const [editDays, setEditDays] = useState<Record<string, { dash: number; push: number }>>({});
+  const [editMode, setEditMode] = useState<Record<string, { dash: "set" | "extend" | "subtract"; push: "set" | "extend" | "subtract" }>>({}); // "set"=从今天, "extend"=续期, "subtract"=减少
 
   useEffect(() => {
     fetch("/api/admin/channel-access")
@@ -255,18 +257,34 @@ function ChannelAccessManager() {
       const existing = prev[slug] ?? {};
       return { ...prev, [slug]: { dash: existing.dash ?? 30, push: existing.push ?? 30 } };
     });
+    setEditMode((prev) => ({
+      ...prev,
+      [slug]: { dash: prev[slug]?.dash ?? "set", push: prev[slug]?.push ?? "set" },
+    }));
   }
 
   async function updateDashExpiry(uid: string, slug: string) {
     const days = editDays[slug]?.dash ?? 30;
+    const mode = editMode[slug]?.dash ?? "set";
     setLoading(true);
+    let body: object;
+    let label: string;
+    if (mode === "extend") {
+      body = { uid, channelSlug: slug, extendDays: days };
+      label = days === 0 ? "永久" : `+${days} 天`;
+    } else if (mode === "subtract") {
+      body = { uid, channelSlug: slug, extendDays: -days };
+      label = `-${days} 天`;
+    } else {
+      body = { uid, channelSlug: slug, days };
+      label = days === 0 ? "永久" : `${days} 天`;
+    }
     const r = await fetch("/api/admin/channel-access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid, channelSlug: slug, days }),
+      body: JSON.stringify(body),
     });
     const d = await r.json();
-    const label = days === 0 ? "永久" : `${days} 天`;
     setMsg(d.ok ? `✅ ${slug} Dashboard → ${label}` : `❌ ${d.error}`);
     setLoading(false);
     if (d.ok) { toggleEdit(slug, "dash"); if (lookupUid) lookupUser(); }
@@ -274,14 +292,26 @@ function ChannelAccessManager() {
 
   async function updatePushExpiry(uid: string, slug: string) {
     const days = editDays[slug]?.push ?? 30;
+    const mode = editMode[slug]?.push ?? "set";
     setLoading(true);
+    let body: object;
+    let label: string;
+    if (mode === "extend") {
+      body = { uid, channelSlug: slug, extendPushDays: days };
+      label = days === 0 ? "永久" : `+${days} 天`;
+    } else if (mode === "subtract") {
+      body = { uid, channelSlug: slug, extendPushDays: -days };
+      label = `-${days} 天`;
+    } else {
+      body = { uid, channelSlug: slug, pushDays: days };
+      label = days === 0 ? "永久" : `${days} 天`;
+    }
     const r = await fetch("/api/admin/channel-access", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid, channelSlug: slug, pushDays: days }),
+      body: JSON.stringify(body),
     });
     const d = await r.json();
-    const label = days === 0 ? "永久" : `${days} 天`;
     setMsg(d.ok ? `✅ ${slug} 推送 → ${label}` : `❌ ${d.error}`);
     setLoading(false);
     if (d.ok) { toggleEdit(slug, "push"); if (lookupUid) lookupUser(); }
@@ -412,20 +442,44 @@ function ChannelAccessManager() {
                       </button>
                     </div>
                     {dashOpen && (
-                      <div style={inlineEditStyle}>
-                        <select value={curDashDays}
-                          onChange={(e) => setEditDays((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], dash: Number(e.target.value) } }))}
-                          style={{ ...selectStyle }}>
-                          {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                        <button onClick={() => updateDashExpiry(lookupUid, c.slug)} disabled={loading}
-                          style={{ padding: "4px 12px", background: C.btnPrimary, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
-                          确认
-                        </button>
-                        <button onClick={() => toggleEdit(c.slug, "dash")}
-                          style={{ padding: "4px 10px", background: "none", border: `1px solid ${C.border}`, color: C.textSub, borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
-                          取消
-                        </button>
+                      <div style={{ ...inlineEditStyle, flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                        {/* 模式切换：设置 / +续期 / -减少 */}
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                          {([
+                            { key: "set",      label: "📅 设置到期日", hint: "从今天起" },
+                            { key: "extend",   label: "➕ 续期",       hint: "在现有基础上加" },
+                            { key: "subtract", label: "➖ 减少",       hint: "在现有基础上减" },
+                          ] as const).map(({ key, label, hint }) => {
+                            const active = (editMode[c.slug]?.dash ?? "set") === key;
+                            return (
+                              <button key={key} onClick={() => setEditMode((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], dash: key } }))}
+                                style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                  border: `1px solid ${active ? C.blue : C.borderMid}`,
+                                  background: active ? C.blueBg : "transparent",
+                                  color: active ? C.blue : C.textMuted }}>
+                                {label}
+                              </button>
+                            );
+                          })}
+                          <span style={{ fontSize: 11, color: C.textMuted, alignSelf: "center" }}>
+                            {{ set: "从今天起", extend: "在现有基础上加", subtract: "在现有基础上减" }[editMode[c.slug]?.dash ?? "set"]}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <select value={curDashDays}
+                            onChange={(e) => setEditDays((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], dash: Number(e.target.value) } }))}
+                            style={{ ...selectStyle }}>
+                            {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                          <button onClick={() => updateDashExpiry(lookupUid, c.slug)} disabled={loading}
+                            style={{ padding: "4px 12px", background: C.btnPrimary, color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                            确认
+                          </button>
+                          <button onClick={() => toggleEdit(c.slug, "dash")}
+                            style={{ padding: "4px 10px", background: "none", border: `1px solid ${C.border}`, color: C.textSub, borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
+                            取消
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -451,20 +505,44 @@ function ChannelAccessManager() {
                       </button>
                     </div>
                     {pushOpen && (
-                      <div style={{ ...inlineEditStyle, background: C.greenBg, border: "1px solid #166534" }}>
-                        <select value={curPushDays}
-                          onChange={(e) => setEditDays((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], push: Number(e.target.value) } }))}
-                          style={{ ...selectStyle }}>
-                          {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                        <button onClick={() => updatePushExpiry(lookupUid, c.slug)} disabled={loading}
-                          style={{ padding: "4px 12px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
-                          确认
-                        </button>
-                        <button onClick={() => toggleEdit(c.slug, "push")}
-                          style={{ padding: "4px 10px", background: "none", border: `1px solid ${C.border}`, color: C.textSub, borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
-                          取消
-                        </button>
+                      <div style={{ ...inlineEditStyle, background: C.greenBg, border: "1px solid #166534", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                        {/* 模式切换：设置 / +续期 / -减少 */}
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                          {([
+                            { key: "set",      label: "📅 设置到期日", hint: "从今天起" },
+                            { key: "extend",   label: "➕ 续期",       hint: "在现有基础上加" },
+                            { key: "subtract", label: "➖ 减少",       hint: "在现有基础上减" },
+                          ] as const).map(({ key, label }) => {
+                            const active = (editMode[c.slug]?.push ?? "set") === key;
+                            return (
+                              <button key={key} onClick={() => setEditMode((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], push: key } }))}
+                                style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                  border: `1px solid ${active ? C.green : C.borderMid}`,
+                                  background: active ? "#022c22" : "transparent",
+                                  color: active ? C.green : C.textMuted }}>
+                                {label}
+                              </button>
+                            );
+                          })}
+                          <span style={{ fontSize: 11, color: C.textMuted, alignSelf: "center" }}>
+                            {{ set: "从今天起", extend: "在现有基础上加", subtract: "在现有基础上减" }[editMode[c.slug]?.push ?? "set"]}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <select value={curPushDays}
+                            onChange={(e) => setEditDays((prev) => ({ ...prev, [c.slug]: { ...prev[c.slug], push: Number(e.target.value) } }))}
+                            style={{ ...selectStyle }}>
+                            {DAY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                          <button onClick={() => updatePushExpiry(lookupUid, c.slug)} disabled={loading}
+                            style={{ padding: "4px 12px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                            确认
+                          </button>
+                          <button onClick={() => toggleEdit(c.slug, "push")}
+                            style={{ padding: "4px 10px", background: "none", border: `1px solid ${C.border}`, color: C.textSub, borderRadius: 6, fontSize: 12, cursor: "pointer" }}>
+                            取消
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

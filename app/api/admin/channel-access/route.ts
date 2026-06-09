@@ -179,17 +179,36 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 格式1：单频道授权
-  const { uid: targetUid, channelSlug, days } = body as {
-    uid?: string; channelSlug?: string; days?: number;
+  // 格式1：单频道授权（支持 days=绝对天数 或 extendDays=续期天数）
+  const { uid: targetUid, channelSlug, days, extendDays } = body as {
+    uid?: string; channelSlug?: string; days?: number; extendDays?: number;
   };
   if (!targetUid || !channelSlug) {
     return NextResponse.json({ error: "Missing uid or channelSlug" }, { status: 400 });
   }
 
-  const expiresAt = (days !== undefined && days > 0)
-    ? new Date(Date.now() + days * 86400_000)
-    : null;
+  let expiresAt: Date | null;
+  if (extendDays !== undefined) {
+    // 调整模式：在当前到期日基础上 ±N 天（0 = 永久）
+    if (extendDays === 0) {
+      expiresAt = null; // 永久
+    } else {
+      const now = new Date();
+      const channel = await prisma.channel.findUnique({ where: { slug: channelSlug } });
+      if (!channel) return NextResponse.json({ error: `Channel not found: ${channelSlug}` }, { status: 404 });
+      const current = await prisma.userChannelAccess.findUnique({
+        where: { uid_channelId: { uid: targetUid, channelId: channel.id } },
+      });
+      // 续期：从现有到期日延伸；减少：从现有到期日往前；若已过期则以今天为基准
+      const base = current?.expiresAt && current.expiresAt > now ? current.expiresAt : now;
+      expiresAt = new Date(base.getTime() + extendDays * 86_400_000);
+    }
+  } else {
+    // 设置模式：从今天起 N 天
+    expiresAt = (days !== undefined && days > 0)
+      ? new Date(Date.now() + days * 86_400_000)
+      : null;
+  }
 
   try {
     await grantChannelAccess(targetUid, channelSlug, expiresAt, { grantedBy: uid });
@@ -199,25 +218,42 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH：修改推送有效期（也可用于已是话题订阅者的用户，DB 限期优先）
-// Body: { uid, channelSlug, pushDays }  pushDays=0 永久, >0 N天
+// PATCH：修改推送有效期（支持 pushDays=绝对天数 或 extendPushDays=续期天数）
+// Body: { uid, channelSlug, pushDays }       pushDays=0 永久, >0 N天（从今天）
+//       { uid, channelSlug, extendPushDays }  extendPushDays=0 永久, >0 在当前基础上续期
 export async function PATCH(req: NextRequest) {
   const uid = await getSessionUid();
   if (!uid || !isOwner(uid)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { uid: targetUid, channelSlug, pushDays } = await req.json() as {
-    uid?: string; channelSlug?: string; pushDays?: number;
+  const { uid: targetUid, channelSlug, pushDays, extendPushDays } = await req.json() as {
+    uid?: string; channelSlug?: string; pushDays?: number; extendPushDays?: number;
   };
-  if (!targetUid || !channelSlug || pushDays === undefined) {
-    return NextResponse.json({ error: "Missing uid, channelSlug, or pushDays" }, { status: 400 });
+  if (!targetUid || !channelSlug || (pushDays === undefined && extendPushDays === undefined)) {
+    return NextResponse.json({ error: "Missing uid, channelSlug, or pushDays/extendPushDays" }, { status: 400 });
   }
 
   const channel = await prisma.channel.findUnique({ where: { slug: channelSlug } });
   if (!channel) return NextResponse.json({ error: `Channel not found: ${channelSlug}` }, { status: 404 });
 
-  const pushExpiresAt = pushDays > 0
-    ? new Date(Date.now() + pushDays * 86400_000)
-    : null; // 0 = 永久
+  let pushExpiresAt: Date | null;
+  if (extendPushDays !== undefined) {
+    // 调整模式：在当前推送到期日基础上 ±N 天（0 = 永久）
+    if (extendPushDays === 0) {
+      pushExpiresAt = null; // 永久
+    } else {
+      const now = new Date();
+      const current = await prisma.userChannelAccess.findUnique({
+        where: { uid_channelId: { uid: targetUid, channelId: channel.id } },
+      });
+      const base = current?.pushExpiresAt && current.pushExpiresAt > now ? current.pushExpiresAt : now;
+      pushExpiresAt = new Date(base.getTime() + extendPushDays * 86_400_000);
+    }
+  } else {
+    // 设置模式：从今天起 N 天
+    pushExpiresAt = (pushDays !== undefined && pushDays > 0)
+      ? new Date(Date.now() + pushDays * 86_400_000)
+      : null; // 0 = 永久
+  }
 
   try {
     await prisma.userChannelAccess.upsert({
