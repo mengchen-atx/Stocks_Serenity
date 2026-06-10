@@ -11,3 +11,5 @@ tsconfig.tsbuildinfo
 .vercel
 .env*
 .gstack/
+xhs-session.json
+.xhs-screenshots/

@@ -47,7 +47,7 @@ export default async function CardPage({
 
   const tweet = await prisma.tweet.findUnique({
     where: { id: tweetId },
-    include: { channel: { select: { name: true, slug: true } } },
+    include: { channel: { select: { name: true, slug: true, avatarUrl: true } } },
   });
   if (!tweet) return notFound();
 
@@ -96,6 +96,11 @@ export default async function CardPage({
             display: flex; align-items: center; justify-content: center;
             font-size: 22px; font-weight: 700; color: white;
             flex-shrink: 0;
+            overflow: hidden;
+          }
+          .avatar img {
+            width: 100%; height: 100%;
+            object-fit: cover;
           }
           .author-info { flex: 1; }
           .author-name {
@@ -174,7 +179,12 @@ export default async function CardPage({
           {/* Header */}
           <div className="header">
             <div className="avatar">
-              {(tweet.channel?.name ?? tweet.authorUsername).charAt(0).toUpperCase()}
+              {tweet.channel?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={tweet.channel.avatarUrl} alt="" />
+              ) : (
+                (tweet.channel?.name ?? tweet.authorUsername).charAt(0).toUpperCase()
+              )}
             </div>
             <div className="author-info">
               <div className="author-name">

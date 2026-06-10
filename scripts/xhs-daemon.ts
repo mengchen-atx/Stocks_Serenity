@@ -13,20 +13,24 @@
  *   → Playwright 截图卡片页 → 发布小红书图文笔记 → 标记 xhsPosted=true
  */
 
-import { chromium } from "playwright";
+import { chromium, type BrowserContext } from "playwright";
 import { prisma } from "@/lib/prisma";
 import type { AiAnalysis } from "@/types";
 import * as fs from "fs";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import sharp from "sharp";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
 const SESSION_FILE  = path.resolve(process.cwd(), "xhs-session.json");
+const EDGE_PATH     = "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
 const SCREENSHOT_DIR = path.resolve(process.cwd(), ".xhs-screenshots");
 const APP_URL        = process.env.APP_URL ?? "http://localhost:3000";
 const CARD_TOKEN     = process.env.CARD_SECRET_TOKEN ?? "";
 const POLL_INTERVAL  = 60_000; // 60 seconds
+const SERENITY_CHANNEL_ID = "cmpswr3350000ap123upcit90"; // 只发 Serenity 频道的推文
+const PUBLISH_AFTER = new Date(); // 只发布此时间之后产生的新推文，历史积压不发
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,19 +40,21 @@ function buildCardUrl(tweetId: string): string {
   return url.toString();
 }
 
-function buildTitle(tweet: { authorUsername: string; channel: { name: string } | null }, analysis: AiAnalysis | null): string {
+const MAX_TITLE_LENGTH = 20; // 小红书标题限制 20 字以内
+
+export function buildTitle(tweet: { authorUsername: string; channel: { name: string } | null }, analysis: AiAnalysis | null): string {
   const author = tweet.channel?.name ?? tweet.authorUsername;
   if (analysis?.bullish_stocks.length) {
     const tickers = analysis.bullish_stocks.slice(0, 3).map((s) => `$${s.ticker}`).join(" ");
-    return `${author}：看涨 ${tickers}`;
+    return `${author}看涨${tickers}`.slice(0, MAX_TITLE_LENGTH);
   }
   if (analysis?.summary_cn) {
-    return `${author} · ${analysis.summary_cn.slice(0, 30)}`;
+    return `${author}·${analysis.summary_cn}`.slice(0, MAX_TITLE_LENGTH);
   }
-  return `${author} 最新观点`;
+  return `${author}最新观点`.slice(0, MAX_TITLE_LENGTH);
 }
 
-function buildDescription(tweet: { content: string }, analysis: AiAnalysis | null): string {
+export function buildDescription(tweet: { content: string }, analysis: AiAnalysis | null): string {
   const parts: string[] = [];
 
   if (analysis?.translated_content_cn) {
@@ -76,7 +82,7 @@ function buildDescription(tweet: { content: string }, analysis: AiAnalysis | nul
 
 // ─── Screenshot ───────────────────────────────────────────────────────────────
 
-async function screenshotCard(tweetId: string): Promise<string> {
+export async function screenshotCard(tweetId: string): Promise<string> {
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
   const outPath = path.join(SCREENSHOT_DIR, `${tweetId}.png`);
 
@@ -100,22 +106,49 @@ async function screenshotCard(tweetId: string): Promise<string> {
   return outPath;
 }
 
+// ─── Note count (publish verification) ────────────────────────────────────────
+
+async function getNoteCount(context: BrowserContext): Promise<number> {
+  const page = await context.newPage();
+  try {
+    await page.goto("https://creator.xiaohongshu.com/new/note-manager", {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    await page.waitForTimeout(2000);
+    const text = await page.locator("body").innerText();
+    const match = text.match(/全部\s*(\d+)/);
+    return match ? parseInt(match[1], 10) : -1;
+  } finally {
+    await page.close();
+  }
+}
+
 // ─── Xiaohongshu post ─────────────────────────────────────────────────────────
 
-async function postToXhs(imagePath: string, title: string, description: string): Promise<void> {
+export async function postToXhs(imagePath: string, title: string, description: string): Promise<void> {
   if (!fs.existsSync(SESSION_FILE)) {
     throw new Error(`找不到 ${SESSION_FILE}，请先运行 setup-xhs-session.ts`);
   }
 
-  const browser = await chromium.launch({ headless: false, slowMo: 80 });
+  const browser = await chromium.launch({
+    headless: false,
+    executablePath: EDGE_PATH,
+    slowMo: 80,
+    args: ["--disable-blink-features=AutomationControlled", "--no-first-run", "--no-default-browser-check"],
+  });
   const context = await browser.newContext({
     storageState: SESSION_FILE,
     viewport: { width: 1280, height: 900 },
     userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
+  });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
   });
 
   const page = await context.newPage();
+  page.on("dialog", (d) => d.accept().catch(() => {}));
 
   try {
     // 1. Open publish page
@@ -130,55 +163,120 @@ async function postToXhs(imagePath: string, title: string, description: string):
       throw new Error("小红书 session 已过期，请重新运行 setup-xhs-session.ts");
     }
 
-    // 2. Click the image post tab (图文)
-    const imageTab = page.locator("text=图文").first();
-    if (await imageTab.isVisible({ timeout: 8_000 }).catch(() => false)) {
-      await imageTab.click();
-      await page.waitForTimeout(1000);
+    // 2. Click the image post tab (上传图文) — retry until the file input accepts images
+    await page.waitForTimeout(2000);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const accept = await page.locator('input[type="file"]').first().getAttribute("accept").catch(() => null);
+      if (accept?.includes("image")) break;
+      const tabs = page.getByText("上传图文", { exact: true });
+      const tabCount = await tabs.count();
+      const idx = attempt < tabCount ? attempt : 0;
+      await tabs.nth(idx).click({ timeout: 5_000 }).catch(() => {});
+      await page.waitForTimeout(1500);
     }
 
     // 3. Upload image via file input
     const fileInput = page.locator('input[type="file"]').first();
     await fileInput.setInputFiles(imagePath);
     console.log("  📤 图片上传中...");
-
-    // Wait for upload preview to appear
-    await page.waitForSelector(".upload-item, .img-container, [class*='upload']", {
-      timeout: 30_000,
-    }).catch(() => console.warn("  ⚠️  等待图片预览超时，继续..."));
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(5000);
 
     // 4. Fill title
-    const titleInput = page.locator('input[placeholder*="标题"], textarea[placeholder*="标题"], [class*="title"] input').first();
-    await titleInput.click({ timeout: 10_000 });
+    const titleInput = page.locator('input[placeholder*="标题"]').first();
+    await titleInput.click({ timeout: 15_000 });
     await titleInput.fill(title);
     console.log(`  ✏️  标题：${title}`);
     await page.waitForTimeout(500);
 
-    // 5. Fill description (rich text editor)
-    // XHS uses a div[contenteditable] editor
-    const descEditor = page.locator(
-      'div[contenteditable="true"], [class*="content"] textarea, [placeholder*="正文"]'
-    ).first();
+    // 5. Fill description (Tiptap rich text editor)
+    const descEditor = page.locator('div.tiptap.ProseMirror').first();
     await descEditor.click({ timeout: 10_000 });
     await page.keyboard.type(description, { delay: 20 });
+    // Close the #话题 autocomplete dropdown that "#" triggers, which covers the publish button
+    await page.keyboard.press("Escape");
     console.log("  ✏️  正文填写完成");
     await page.waitForTimeout(500);
 
-    // 6. Publish
-    const publishBtn = page.locator('button:has-text("发布"), button:has-text("提交")').first();
-    await publishBtn.click({ timeout: 10_000 });
-    console.log("  🚀 发布中...");
+    // 6. Publish — wait for the upload-processing overlay to clear first
+    await page.locator("text=加载中").first().waitFor({ state: "hidden", timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(1000);
 
-    // Wait for success state
-    await page.waitForURL(/creator\.xiaohongshu\.com\/(home|manage|creator)/, {
-      timeout: 30_000,
-    }).catch(async () => {
-      // Fallback: check for success toast
-      await page.waitForSelector('[class*="success"], [class*="toast"]', {
-        timeout: 15_000,
-      }).catch(() => {});
+    // Capture the note count BEFORE publishing, so we can verify the
+    // publish actually went through afterwards (a "success" toast or URL
+    // change is not reliable — XHS can navigate without actually publishing).
+    const countBefore = await getNoteCount(context);
+
+    // The publish/save controls are rendered inside a custom element
+    // <xhs-publish-btn submit-text="发布" save-text="暂存离开"> with a
+    // closed shadow root — its internal "发布"/"暂存离开" buttons aren't
+    // reachable via DOM queries. Locate the red "发布" button by its
+    // brand color within the widget's own bounding box.
+    const widgetRect = await page.evaluate(() => {
+      const widget = document.querySelector("xhs-publish-btn");
+      if (!widget) return null;
+      const r = widget.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom };
     });
+    if (!widgetRect) {
+      await page.screenshot({ path: "/tmp/xhs-debug-final.png", fullPage: true });
+      throw new Error("找不到发布按钮");
+    }
+
+    const clip = {
+      x: Math.max(0, Math.round(widgetRect.x)),
+      y: Math.max(0, Math.round(widgetRect.y)),
+      width: Math.round(widgetRect.width),
+      height: Math.round(widgetRect.height),
+    };
+    const widgetShot = await page.screenshot({ clip });
+    const { data, info } = await sharp(widgetShot).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    // The "发布" button's accent color varies (observed both XHS brand red
+    // and blue) depending on page state, so detect any saturated, non-gray,
+    // non-white/black pixel rather than a fixed hue.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let y = 0; y < info.height; y++) {
+      for (let x = 0; x < info.width; x++) {
+        const idx = (y * info.width + x) * info.channels;
+        const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        const saturation = max - min;
+        const isColorful = saturation > 40 && max > 100;
+        if (isColorful) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    let clickX: number, clickY: number;
+    if (maxX >= minX) {
+      clickX = clip.x + (minX + maxX) / 2;
+      clickY = clip.y + (minY + maxY) / 2;
+    } else {
+      // Fallback to the previously-measured fixed offset from the widget's bottom-right corner
+      clickX = widgetRect.right - 59;
+      clickY = widgetRect.bottom - 20;
+    }
+
+    await page.mouse.click(clickX, clickY);
+    console.log("  🚀 发布中...");
+    await page.waitForTimeout(2000);
+
+    // Verify: the note count in 笔记管理 must increase by 1
+    let countAfter = countBefore;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await page.waitForTimeout(2000);
+      countAfter = await getNoteCount(context);
+      if (countAfter > countBefore) break;
+    }
+
+    if (countAfter <= countBefore) {
+      await page.screenshot({ path: "/tmp/xhs-debug-publish-failed.png", fullPage: true }).catch(() => {});
+      throw new Error(`发布未生效（笔记数 ${countBefore} → ${countAfter}）`);
+    }
 
     console.log("  ✅ 发布成功！");
   } finally {
@@ -191,7 +289,13 @@ async function postToXhs(imagePath: string, title: string, description: string):
 
 async function processNewTweets(): Promise<number> {
   const pending = await prisma.tweet.findMany({
-    where: { pushed: true, xhsPosted: false, aiAnalysis: { not: "JsonNull" } },
+    where: {
+      pushed: true,
+      xhsPosted: false,
+      aiAnalysis: { not: "JsonNull" },
+      channelId: SERENITY_CHANNEL_ID,
+      tweetCreatedAt: { gte: PUBLISH_AFTER },
+    },
     orderBy: { tweetCreatedAt: "asc" },
     take: 5,
     include: { channel: { select: { name: true, slug: true } } },
@@ -249,4 +353,6 @@ async function main() {
   }, POLL_INTERVAL);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+if (process.argv[1] && process.argv[1].endsWith("xhs-daemon.ts")) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}
