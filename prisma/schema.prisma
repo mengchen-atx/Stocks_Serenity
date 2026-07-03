@@ -156,18 +156,19 @@ model UserChannelAccess {
 }
 
 model WatchUser {
-  id              String   @id @default(cuid())
-  username        String   @unique
-  displayName     String?
-  enabled         Boolean  @default(true)
-  includeReplies  Boolean  @default(false)
-  includeRetweets Boolean  @default(false)
-  lastTweetId     String?
-  channelId       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  channel         Channel? @relation(fields: [channelId], references: [id])
-  tweets          Tweet[]
+  id                  String   @id @default(cuid())
+  username            String   @unique
+  displayName         String?
+  enabled             Boolean  @default(true)
+  includeReplies      Boolean  @default(false)
+  includeRetweets     Boolean  @default(false)
+  lastTweetId         String?
+  channelId           String?
+  pollIntervalSeconds Int      @default(30)   // 30 = 实时，300 = 5分钟一次
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  channel             Channel? @relation(fields: [channelId], references: [id])
+  tweets              Tweet[]
 }
 
 model Tweet {
@@ -183,6 +184,7 @@ model Tweet {
   aiAnalysis        Json?
   pushed            Boolean      @default(false)
   xhsPosted         Boolean      @default(false)
+  douyinPosted      Boolean      @default(false)
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   watchUserId       String?

@@ -38,6 +38,19 @@ export type PipelineResult = {
 
 // ─── Main pipeline ────────────────────────────────────────────────────────────
 
+const SUBSCRIBER_SYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 分钟同步一次订阅者
+
+async function isSubscriberSyncDue(): Promise<boolean> {
+  const recent = await prisma.cronRun.findFirst({
+    where: {
+      status: "SUCCESS",
+      finishedAt: { gte: new Date(Date.now() - SUBSCRIBER_SYNC_INTERVAL_MS) }
+    },
+    orderBy: { finishedAt: "desc" }
+  });
+  return recent === null;
+}
+
 export async function runSerenityPipeline(): Promise<PipelineResult> {
   const cronRun = await prisma.cronRun.create({ data: { status: "RUNNING" } });
   const result: PipelineResult = { fetched: 0, analyzed: 0, pushed: 0, skipped: 0 };
@@ -46,6 +59,8 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
     const users = await getEnabledWatchUsers();
 
     for (const user of users) {
+      if (!shouldPollNow(user.pollIntervalSeconds)) continue;
+
       const tweets = await fetchLatestTweets({
         username: user.username,
         sinceId: user.lastTweetId,
@@ -75,11 +90,15 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
       }
     }
 
-    // ── 安全网1：同步 WxPusher 订阅者 → 补充因 webhook 丢失未授权的用户 ──────
-    await syncWxPusherSubscribers();
+    // ── 安全网1：同步 WxPusher 订阅者（每 10 分钟最多一次，避免频繁外部 API 调用）──
+    if (await isSubscriberSyncDue()) {
+      await syncWxPusherSubscribers();
+    }
 
-    // ── 安全网2：处理卡住的历史发送任务（webhook 超时未完成的） ────────────────
-    await retryPendingHistoryJobs();
+    // ── 安全网2：处理卡住的历史发送任务（仅在有新推文时才可能产生新的卡住任务）──
+    if (result.fetched > 0) {
+      await retryPendingHistoryJobs();
+    }
 
     await prisma.cronRun.update({
       where: { id: cronRun.id },
@@ -444,6 +463,19 @@ async function buildManualPushUids(
   }
 
   return Array.from(uidSet);
+}
+
+/**
+ * 时间槽检查：cron 每 30 秒触发一次。
+ * - pollIntervalSeconds <= 30  → 每次都拉取（实时）
+ * - pollIntervalSeconds = 300  → 每 5 分钟第一个 cron 周期内拉取一次
+ * 用当前时间戳对 interval 取模，落在前 60s 内则视为"本槽首次运行"。
+ * 60s 窗口足以覆盖 cron-job.org 与 GitHub Actions 两个触发源的时间抖动。
+ */
+function shouldPollNow(pollIntervalSeconds: number): boolean {
+  if (pollIntervalSeconds <= 30) return true;
+  const intervalMs = pollIntervalSeconds * 1000;
+  return Date.now() % intervalMs < 60_000;
 }
 
 async function getEnabledWatchUsers() {
