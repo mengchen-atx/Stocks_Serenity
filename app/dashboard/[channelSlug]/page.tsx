@@ -1,5 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { after } from "next/server";
+import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
@@ -14,6 +15,31 @@ import type { AiAnalysis } from "@/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const FEED_LIMIT = 20;
+
+// 推文列表和股票统计按频道缓存 60 秒，所有用户共享同一份数据
+const getChannelFeedCached = unstable_cache(
+  async (channelId: string) => {
+    const [tweets, totalCount, topMentions] = await Promise.all([
+      prisma.tweet.findMany({
+        where: { channelId },
+        orderBy: { tweetCreatedAt: "desc" },
+        take: FEED_LIMIT,
+        include: {
+          stockMentions: {
+            include: { stock: { select: { ticker: true, companyName: true } } },
+          },
+        },
+      }).catch(() => []),
+      prisma.tweet.count({ where: { channelId } }).catch(() => 0),
+      getAllMentionedStocks(30, 9999, channelId).catch(() => []),
+    ]);
+    return { tweets, totalCount, topMentions };
+  },
+  ["channel-feed"],
+  { revalidate: 60 }
+);
+
 function stripTcoLinks(text: string): string {
   // 注意：不能用 \s{2,} 整体压缩空白——会把作者的换行排版（一行一个股票）
   // 也压成一行。只压缩行内多余空格，保留换行结构。
@@ -26,12 +52,14 @@ function stripTcoLinks(text: string): string {
     .trim();
 }
 
-function formatCST(date: Date): string {
+function formatCST(date: Date | string): string {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return "—";
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", hour12: false,
-  }).formatToParts(date);
+  }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("year")}/${get("month")}/${get("day")} ${get("hour")}:${get("minute")} CST`;
 }
@@ -45,6 +73,25 @@ export default async function ChannelDashboardPage({
   if (!uid) redirect("/auth/wxpusher");
 
   const { channelSlug } = await params;
+
+  // 频率限制：每小时最多 200 次，超出直接拒绝（防爬虫）
+  const RATE_LIMIT = 200;
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const recentCount = await prisma.accessLog.count({
+    where: { uid, createdAt: { gte: oneHourAgo } },
+  }).catch(() => 0);
+  if (recentCount >= RATE_LIMIT) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#070d1a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🚦</div>
+          <h2 style={{ color: "#f1f5f9", fontSize: 20, marginBottom: 8 }}>访问过于频繁</h2>
+          <p style={{ fontSize: 14, marginBottom: 4 }}>您的访问频率超出限制，请稍后再试。</p>
+          <p style={{ fontSize: 12, color: "#475569" }}>每小时最多访问 {RATE_LIMIT} 次</p>
+        </div>
+      </div>
+    );
+  }
 
   // 响应发出后异步记录访问日志（不阻塞渲染）
   after(async () => {
@@ -208,20 +255,8 @@ export default async function ChannelDashboardPage({
       })
   );
 
-  const [tweets, topMentions] = await Promise.all([
-    prisma.tweet.findMany({
-      where: { channelId: channel.id },
-      orderBy: { tweetCreatedAt: "desc" },
-      include: {
-        stockMentions: {
-          include: { stock: { select: { ticker: true, companyName: true } } },
-        },
-      },
-    }).catch(() => []),
-    getAllMentionedStocks(30, 9999, channel.id).catch(() => []),
-  ]);
-
-  const total = tweets.length;
+  const { tweets, totalCount, topMentions } = await getChannelFeedCached(channel.id);
+  const total = totalCount;
   const aShareMentions = topMentions.filter((m) => /^\d{6}(\.(SZ|SH|SS))?$/i.test(m.ticker));
 
   return (
