@@ -17,14 +17,16 @@ export const revalidate = 0;
 
 const FEED_LIMIT = 20;
 
-// 推文列表和股票统计按频道缓存 60 秒，所有用户共享同一份数据
+// 推文列表按频道+页码缓存 60 秒，所有用户共享同一份数据
 const getChannelFeedCached = unstable_cache(
-  async (channelId: string) => {
+  async (channelId: string, page: number) => {
+    const skip = (page - 1) * FEED_LIMIT;
     const [tweets, totalCount, topMentions] = await Promise.all([
       prisma.tweet.findMany({
         where: { channelId },
         orderBy: { tweetCreatedAt: "desc" },
         take: FEED_LIMIT,
+        skip,
         include: {
           stockMentions: {
             include: { stock: { select: { ticker: true, companyName: true } } },
@@ -66,13 +68,17 @@ function formatCST(date: Date | string): string {
 
 export default async function ChannelDashboardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ channelSlug: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const uid = await getSessionUid();
   if (!uid) redirect("/auth/wxpusher");
 
   const { channelSlug } = await params;
+  const { page: pageParam } = await searchParams;
+  const currentPage = Math.max(1, parseInt(pageParam ?? "1") || 1);
 
   // 频率限制：每小时最多 200 次，超出直接拒绝（防爬虫）
   const RATE_LIMIT = 200;
@@ -255,8 +261,9 @@ export default async function ChannelDashboardPage({
       })
   );
 
-  const { tweets, totalCount, topMentions } = await getChannelFeedCached(channel.id);
+  const { tweets, totalCount, topMentions } = await getChannelFeedCached(channel.id, currentPage);
   const total = totalCount;
+  const totalPages = Math.ceil(total / FEED_LIMIT);
   const aShareMentions = topMentions.filter((m) => /^\d{6}(\.(SZ|SH|SS))?$/i.test(m.ticker));
 
   return (
@@ -549,6 +556,41 @@ export default async function ChannelDashboardPage({
               );
             })}
           </div>
+
+          {/* ── 翻页 ── */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-center gap-3">
+              {currentPage > 1 ? (
+                <Link
+                  href={`/dashboard/${channelSlug}?page=${currentPage - 1}`}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm text-slate-300 transition-colors hover:border-teal-500/50 hover:text-teal-400"
+                >
+                  ← 上一页
+                </Link>
+              ) : (
+                <span className="flex items-center gap-1.5 rounded-lg border border-slate-800 px-4 py-2 text-sm text-slate-700 cursor-not-allowed">
+                  ← 上一页
+                </span>
+              )}
+
+              <span className="font-mono text-xs text-slate-500">
+                {currentPage} / {totalPages}
+              </span>
+
+              {currentPage < totalPages ? (
+                <Link
+                  href={`/dashboard/${channelSlug}?page=${currentPage + 1}`}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm text-slate-300 transition-colors hover:border-teal-500/50 hover:text-teal-400"
+                >
+                  下一页 →
+                </Link>
+              ) : (
+                <span className="flex items-center gap-1.5 rounded-lg border border-slate-800 px-4 py-2 text-sm text-slate-700 cursor-not-allowed">
+                  下一页 →
+                </span>
+              )}
+            </div>
+          )}
 
           {/* ── 侧边栏 ── */}
           <div className="order-1 w-full space-y-4 lg:order-2 lg:w-72 lg:flex-shrink-0">
