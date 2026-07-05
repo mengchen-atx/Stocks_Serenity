@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 export type TopMention = {
   ticker: string;
   companyName: string | null;
+  exchange: string | null;
   bullishCount: number;
   bearishCount: number;
   totalCount: number;
@@ -76,7 +77,7 @@ export async function getAllMentionedStocks(
 
   const stocks = await prisma.stock.findMany({
     where: { id: { in: sortedIds } },
-    select: { id: true, ticker: true, companyName: true }
+    select: { id: true, ticker: true, companyName: true, exchange: true }
   });
   const stockById = new Map(stocks.map((s) => [s.id, s]));
 
@@ -86,6 +87,7 @@ export async function getAllMentionedStocks(
     return {
       ticker: stock?.ticker ?? "UNKNOWN",
       companyName: stock?.companyName ?? null,
+      exchange: stock?.exchange ?? null,
       bullishCount: counts.bullish,
       bearishCount: counts.bearish,
       totalCount: counts.bullish + counts.bearish
@@ -95,8 +97,22 @@ export async function getAllMentionedStocks(
 
 const A_SHARE_TICKER_REGEX = /^\d{6}(\.(SZ|SH|SS))?$/i;
 
+// Finnhub 对中国大陆交易所（上交所/深交所）的 exchange 字段关键词
+export const CHINESE_EXCHANGE_PATTERNS = /SHH|SHA|SHSE|SHE|SZSE|CNE|XSHG|XSHE/i;
+
 export function isAShareTicker(ticker: string): boolean {
   return A_SHARE_TICKER_REGEX.test(ticker);
+}
+
+/**
+ * 综合判断：ticker 格式符合 A 股 + exchange 未被确认为非中国交易所
+ * 用于 dashboard 侧边栏过滤，避免将韩国/日本等 6 位代码误判为 A 股
+ */
+export function isLikelyAShare(ticker: string, exchange: string | null): boolean {
+  if (!isAShareTicker(ticker)) return false;
+  // exchange 已设置且明确不是中国交易所 → 排除
+  if (exchange && !CHINESE_EXCHANGE_PATTERNS.test(exchange)) return false;
+  return true;
 }
 
 /**
@@ -120,10 +136,18 @@ export async function findNewlyMentionedAShareTickers(
 
   const stocks = await prisma.stock.findMany({
     where: { ticker: { in: candidates } },
-    select: { id: true, ticker: true }
+    select: { id: true, ticker: true, exchange: true }
   });
-  const stockIdByTicker = new Map(stocks.map((s) => [s.ticker, s.id]));
-  const knownStockIds = stocks.map((s) => s.id);
+
+  // 如果 exchange 已被 Finnhub 补充，且明确不是中国交易所，直接排除
+  // 中国交易所关键词：SHH/SHA/SHSE（上交所）、SHE/SZSE（深交所）、CNE、null（未知，保留）
+  const CHINESE_EXCHANGE_PATTERNS = /SHH|SHA|SHSE|SHE|SZSE|CNE|XSHG|XSHE/i;
+  const confirmedAShareStocks = stocks.filter(
+    (s) => !s.exchange || CHINESE_EXCHANGE_PATTERNS.test(s.exchange)
+  );
+
+  const stockIdByTicker = new Map(confirmedAShareStocks.map((s) => [s.ticker, s.id]));
+  const knownStockIds = confirmedAShareStocks.map((s) => s.id);
 
   const seenStockIds = new Set(
     knownStockIds.length === 0

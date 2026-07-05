@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { getSessionUid } from "@/lib/wxpusher-auth";
 import { prisma } from "@/lib/prisma";
-import { getAllMentionedStocks } from "@/lib/insights";
+import { getAllMentionedStocks, isLikelyAShare } from "@/lib/insights";
 import { getAllChannels, checkChannelAccess } from "@/lib/channels";
 import { isAdminUid } from "@/lib/admin";
 import { fetchTopicSubscribersWithExpiry } from "@/lib/wxpusher";
@@ -264,7 +264,7 @@ export default async function ChannelDashboardPage({
   const { tweets, totalCount, topMentions } = await getChannelFeedCached(channel.id, currentPage);
   const total = totalCount;
   const totalPages = Math.ceil(total / FEED_LIMIT);
-  const aShareMentions = topMentions.filter((m) => /^\d{6}(\.(SZ|SH|SS))?$/i.test(m.ticker));
+  const aShareMentions = topMentions.filter((m) => isLikelyAShare(m.ticker, m.exchange));
 
   return (
     <div className="min-h-screen bg-[#070d1a] text-slate-200 overflow-x-hidden">
