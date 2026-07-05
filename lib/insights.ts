@@ -4,6 +4,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { env } from "@/lib/env";
 
 export type TopMention = {
   ticker: string;
@@ -116,6 +117,61 @@ export function isLikelyAShare(ticker: string, exchange: string | null): boolean
 }
 
 /**
+ * 对 exchange 为 null 的 6 位数字 ticker，调用 LLM 判断是否为 A 股，
+ * 并将结果写回 Stock.exchange 字段（永久缓存，下次直接用）。
+ * 返回 true = 是 A 股，false = 不是 A 股。
+ */
+async function verifyAShareWithLlm(
+  ticker: string,
+  companyName: string | null
+): Promise<boolean> {
+  const apiKey = env.OPENAI_API_KEY; // DeepSeek 复用 OPENAI_API_KEY
+  if (!apiKey) return true; // 无法验证时保守处理，当作 A 股
+
+  try {
+    const prompt = `判断以下股票代码是否是中国A股（在上交所SSE或深交所SZSE上市）。
+股票代码：${ticker}
+公司名（如有）：${companyName ?? "未知"}
+
+只回答 JSON，格式：{"isAShare": true/false, "exchange": "交易所简称或国家"}
+不要任何额外说明。`;
+
+    const res = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        max_tokens: 80,
+      }),
+    });
+
+    if (!res.ok) return true;
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content ?? "";
+    const jsonStr = raw.replace(/```json?\n?|```/g, "").trim();
+    const parsed = JSON.parse(jsonStr) as { isAShare: boolean; exchange?: string };
+
+    // 把判断结果存回 DB，供下次直接使用
+    const exchangeValue = parsed.isAShare
+      ? (parsed.exchange ?? "SHSE")
+      : (parsed.exchange ?? "UNKNOWN");
+    await prisma.stock.updateMany({
+      where: { ticker },
+      data: { exchange: exchangeValue },
+    });
+
+    return parsed.isAShare;
+  } catch {
+    return true; // 解析失败时保守处理
+  }
+}
+
+/**
  * 找出本条推文中"该频道历史上从未被提及过"的 A 股代码（不区分多空）。
  * 用于在推送标题中触发紧急提醒——首次点名的 A 股往往是信息差最大的窗口期。
  *
@@ -136,16 +192,30 @@ export async function findNewlyMentionedAShareTickers(
 
   const stocks = await prisma.stock.findMany({
     where: { ticker: { in: candidates } },
-    select: { id: true, ticker: true, exchange: true }
+    select: { id: true, ticker: true, exchange: true, companyName: true }
   });
 
-  // 如果 exchange 已被 Finnhub 补充，且明确不是中国交易所，直接排除
-  // 中国交易所关键词：SHH/SHA/SHSE（上交所）、SHE/SZSE（深交所）、CNE、null（未知，保留）
-  const CHINESE_EXCHANGE_PATTERNS = /SHH|SHA|SHSE|SHE|SZSE|CNE|XSHG|XSHE/i;
-  const confirmedAShareStocks = stocks.filter(
-    (s) => !s.exchange || CHINESE_EXCHANGE_PATTERNS.test(s.exchange)
+  // exchange 已知 → 按交易所直接判断；exchange 为 null → 调用 LLM 验证
+  const confirmedAShareTickers = new Set<string>();
+  await Promise.all(
+    candidates.map(async (ticker) => {
+      const stock = stocks.find((s) => s.ticker === ticker);
+      const exchange = stock?.exchange ?? null;
+
+      if (exchange) {
+        // 已知 exchange：是中国交易所 → 确认 A 股，否则跳过
+        if (CHINESE_EXCHANGE_PATTERNS.test(exchange)) {
+          confirmedAShareTickers.add(ticker);
+        }
+      } else {
+        // exchange 未知 → 问 LLM
+        const isAShare = await verifyAShareWithLlm(ticker, stock?.companyName ?? null);
+        if (isAShare) confirmedAShareTickers.add(ticker);
+      }
+    })
   );
 
+  const confirmedAShareStocks = stocks.filter((s) => confirmedAShareTickers.has(s.ticker));
   const stockIdByTicker = new Map(confirmedAShareStocks.map((s) => [s.ticker, s.id]));
   const knownStockIds = confirmedAShareStocks.map((s) => s.id);
 
