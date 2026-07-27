@@ -466,14 +466,14 @@ async function buildManualPushUids(
 }
 
 /**
- * 时间槽检查：cron 每 30 秒触发一次。
- * - pollIntervalSeconds <= 30  → 每次都拉取（实时）
+ * 时间槽检查：cron 每 60 秒触发一次。
+ * - pollIntervalSeconds <= 60  → 每次都拉取（实时）
  * - pollIntervalSeconds = 300  → 每 5 分钟第一个 cron 周期内拉取一次
  * 用当前时间戳对 interval 取模，落在前 60s 内则视为"本槽首次运行"。
  * 60s 窗口足以覆盖 cron-job.org 与 GitHub Actions 两个触发源的时间抖动。
  */
 function shouldPollNow(pollIntervalSeconds: number): boolean {
-  if (pollIntervalSeconds <= 30) return true;
+  if (pollIntervalSeconds <= 60) return true;
   const intervalMs = pollIntervalSeconds * 1000;
   return Date.now() % intervalMs < 60_000;
 }
