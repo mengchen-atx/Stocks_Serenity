@@ -124,10 +124,20 @@ async function main() {
     // 更新 lastTweetId，让 cron 从最新处续上
     const newest = tweets[tweets.length - 1];
     if (newest) {
-      await prisma.watchUser.update({
-        where: { id: user.id },
-        data: { lastTweetId: newest.tweetId },
-      });
+      try {
+        await prisma.watchUser.update({
+          where: { id: user.id },
+          data: { lastTweetId: newest.tweetId },
+        });
+      } catch {
+        // 连接超时时重连一次再试
+        await prisma.$disconnect();
+        await prisma.$connect();
+        await prisma.watchUser.update({
+          where: { id: user.id },
+          data: { lastTweetId: newest.tweetId },
+        });
+      }
       console.log(`\n  ✓ 已更新 lastTweetId → ${newest.tweetId}`);
     }
   }
