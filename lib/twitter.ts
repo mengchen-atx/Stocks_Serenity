@@ -80,6 +80,8 @@ function cleanTweetText(text: string, urls: UrlEntity[] = []): string {
 
 export async function fetchLatestTweets(params: {
   username: string;
+  /** 已缓存的 Twitter user ID，提供时跳过 username→ID 查询，节省一次 API 调用 */
+  cachedUserId?: string | null;
   sinceId?: string | null;
   startTime?: Date;
   endTime?: Date;
@@ -91,7 +93,9 @@ export async function fetchLatestTweets(params: {
     return [];
   }
 
-  const user = await fetchTwitterUser(params.username);
+  const user = params.cachedUserId
+    ? { id: params.cachedUserId, username: params.username }
+    : await fetchTwitterUser(params.username);
 
   const baseUrl = new URL(`https://api.twitter.com/2/users/${user.id}/tweets`);
   baseUrl.searchParams.set(

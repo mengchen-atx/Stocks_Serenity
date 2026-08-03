@@ -63,11 +63,17 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
 
       const tweets = await fetchLatestTweets({
         username: user.username,
+        cachedUserId: user.twitterUserId,
         sinceId: user.lastTweetId,
         includeReplies: user.includeReplies,
         includeRetweets: user.includeRetweets,
         maxResults: 20
       });
+
+      // 首次拉取后把解析出的 userId 存回 DB，下次直接用，省一次 API 调用
+      if (!user.twitterUserId && tweets.length > 0) {
+        await cacheTwitterUserId(user.username, user.id);
+      }
 
       result.fetched += tweets.length;
 
@@ -497,6 +503,29 @@ async function getEnabledWatchUsers() {
     include: { channel: { select: { id: true, wxpusherTopicId: true } } }
   });
   return [created];
+}
+
+/**
+ * 查询 Twitter 获取 userId 并存入 WatchUser，供下次直接使用省去一次 API 调用。
+ * 仅在 twitterUserId 为空时调用一次。
+ */
+async function cacheTwitterUserId(username: string, watchUserId: string): Promise<void> {
+  try {
+    const res = await fetch(
+      `https://api.twitter.com/2/users/by/username/${encodeURIComponent(username)}`,
+      { headers: { Authorization: `Bearer ${env.TWITTER_BEARER_TOKEN}` } }
+    );
+    if (!res.ok) return;
+    const data = await res.json() as { data?: { id: string } };
+    if (data.data?.id) {
+      await prisma.watchUser.update({
+        where: { id: watchUserId },
+        data: { twitterUserId: data.data.id }
+      });
+    }
+  } catch {
+    // 缓存失败不影响正常流程，下次再试
+  }
 }
 
 async function upsertMentions(tweetId: string, analysis: AiAnalysis) {

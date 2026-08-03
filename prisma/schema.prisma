@@ -163,6 +163,7 @@ model WatchUser {
   includeReplies      Boolean  @default(false)
   includeRetweets     Boolean  @default(false)
   lastTweetId         String?
+  twitterUserId       String?                 // 缓存的 Twitter user ID，避免每次重复查询
   channelId           String?
   pollIntervalSeconds Int      @default(30)   // 30 = 实时，300 = 5分钟一次
   createdAt           DateTime @default(now())
