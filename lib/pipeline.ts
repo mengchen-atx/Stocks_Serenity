@@ -77,6 +77,15 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
 
       result.fetched += tweets.length;
 
+      // 有新推文 → 恢复正常频率（账号重新活跃）
+      if (tweets.length > 0 && user.pollIntervalSeconds > DEFAULT_POLL_INTERVAL_SECONDS) {
+        await prisma.watchUser.update({
+          where: { id: user.id },
+          data: { pollIntervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS }
+        });
+        logger.info({ username: user.username, restored: DEFAULT_POLL_INTERVAL_SECONDS }, "poll interval restored");
+      }
+
       // 获取该 WatchUser 对应频道的 wxpusherTopicId
       const channelTopicId = user.channel?.wxpusherTopicId ?? null;
 
@@ -94,6 +103,11 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
           data: { lastTweetId: newest.tweetId }
         });
       }
+    }
+
+    // ── 每小时自动调整低活跃账号的轮询频率 ──────────────────────────────────────
+    if (new Date().getMinutes() === 0) {
+      await adaptPollIntervals();
     }
 
     // ── 安全网1：同步 WxPusher 订阅者（每 10 分钟最多一次，避免频繁外部 API 调用）──
@@ -471,12 +485,57 @@ async function buildManualPushUids(
   return Array.from(uidSet);
 }
 
+// 普通账号默认轮询间隔（秒）
+const DEFAULT_POLL_INTERVAL_SECONDS = 300;
+
+/**
+ * 自动调整低活跃账号的轮询频率（每小时执行一次）。
+ *
+ * 只调整 pollIntervalSeconds >= DEFAULT_POLL_INTERVAL_SECONDS 的账号，
+ * 避免误改 Serenity（30s）等特殊配置。
+ *
+ * | 最近发帖距今 | 轮询间隔    |
+ * |------------|------------|
+ * | <= 1 天    | 300s (5分钟) |
+ * | <= 3 天    | 600s (10分钟)|
+ * | <= 7 天    | 1800s (30分钟)|
+ * | > 7 天     | 3600s (1小时)|
+ */
+async function adaptPollIntervals(): Promise<void> {
+  const now = new Date();
+  const users = await prisma.watchUser.findMany({
+    where: { enabled: true, pollIntervalSeconds: { gte: DEFAULT_POLL_INTERVAL_SECONDS } },
+    select: { id: true, username: true, pollIntervalSeconds: true }
+  });
+
+  for (const user of users) {
+    const lastTweet = await prisma.tweet.findFirst({
+      where: { authorUsername: { equals: user.username, mode: "insensitive" } },
+      orderBy: { tweetCreatedAt: "desc" },
+      select: { tweetCreatedAt: true }
+    });
+
+    const daysSince = lastTweet
+      ? (now.getTime() - lastTweet.tweetCreatedAt.getTime()) / 86_400_000
+      : 999;
+
+    const target =
+      daysSince <= 1 ? 300 :
+      daysSince <= 3 ? 600 :
+      daysSince <= 7 ? 1800 : 3600;
+
+    if (target !== user.pollIntervalSeconds) {
+      await prisma.watchUser.update({ where: { id: user.id }, data: { pollIntervalSeconds: target } });
+      logger.info({ username: user.username, from: user.pollIntervalSeconds, to: target, daysSince: Math.round(daysSince) }, "poll interval adapted");
+    }
+  }
+}
+
 /**
  * 时间槽检查：cron 每 60 秒触发一次。
  * - pollIntervalSeconds <= 60  → 每次都拉取（实时）
  * - pollIntervalSeconds = 300  → 每 5 分钟第一个 cron 周期内拉取一次
  * 用当前时间戳对 interval 取模，落在前 60s 内则视为"本槽首次运行"。
- * 60s 窗口足以覆盖 cron-job.org 与 GitHub Actions 两个触发源的时间抖动。
  */
 function shouldPollNow(pollIntervalSeconds: number): boolean {
   if (pollIntervalSeconds <= 60) return true;

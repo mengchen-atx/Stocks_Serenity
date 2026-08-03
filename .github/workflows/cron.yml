@@ -1,13 +1,7 @@
 name: Serenity Pipeline
 
 on:
-  schedule:
-    # 备用触发：每2分钟一次
-    # 主要触发器是 cron-job.org（已设置为每1分钟一次，更精准、不受 GitHub 限流影响）
-    # 注意：GitHub 官方说明调度任务最快约5分钟一次、且高峰期可能延迟触发，
-    # 这里设成 */2 只是尽量贴近，真正保证 1-2 分钟时效性的是 cron-job.org 那一路
-    - cron: "*/2 * * * *"
-  # 也可以在 GitHub Actions 页面手动触发，方便调试
+  # 主触发器已迁移至 cron-job.org（每1分钟，更精准），GitHub Actions 仅保留手动触发用于调试
   workflow_dispatch:
 
 jobs:
