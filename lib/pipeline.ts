@@ -56,52 +56,59 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
   const result: PipelineResult = { fetched: 0, analyzed: 0, pushed: 0, skipped: 0 };
 
   try {
-    const users = await getEnabledWatchUsers();
+    // ── 推文抓取：polling 模式 OR stream 模式（二选一，不能同时运行）─────────────
+    if (env.TWITTER_STREAM_ENABLED) {
+      // Stream 模式：推文由外部 stream-daemon 实时推入 /api/stream/ingest
+      // cron 仅保留辅助性任务，不再消耗 Twitter REST API 配额
+      logger.info("stream mode active — skipping REST polling");
+    } else {
+      const users = await getEnabledWatchUsers();
 
-    for (const user of users) {
-      if (!shouldPollNow(user.pollIntervalSeconds)) continue;
+      for (const user of users) {
+        if (!shouldPollNow(user.pollIntervalSeconds)) continue;
 
-      const tweets = await fetchLatestTweets({
-        username: user.username,
-        cachedUserId: user.twitterUserId,
-        sinceId: user.lastTweetId,
-        includeReplies: user.includeReplies,
-        includeRetweets: user.includeRetweets,
-        maxResults: 20
-      });
-
-      // 首次拉取后把解析出的 userId 存回 DB，下次直接用，省一次 API 调用
-      if (!user.twitterUserId && tweets.length > 0) {
-        await cacheTwitterUserId(user.username, user.id);
-      }
-
-      result.fetched += tweets.length;
-
-      // 有新推文 → 恢复正常频率（账号重新活跃）
-      if (tweets.length > 0 && user.pollIntervalSeconds > DEFAULT_POLL_INTERVAL_SECONDS) {
-        await prisma.watchUser.update({
-          where: { id: user.id },
-          data: { pollIntervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS }
+        const tweets = await fetchLatestTweets({
+          username: user.username,
+          cachedUserId: user.twitterUserId,
+          sinceId: user.lastTweetId,
+          includeReplies: user.includeReplies,
+          includeRetweets: user.includeRetweets,
+          maxResults: 20
         });
-        logger.info({ username: user.username, restored: DEFAULT_POLL_INTERVAL_SECONDS }, "poll interval restored");
-      }
 
-      // 获取该 WatchUser 对应频道的 wxpusherTopicId
-      const channelTopicId = user.channel?.wxpusherTopicId ?? null;
+        // 首次拉取后把解析出的 userId 存回 DB，下次直接用，省一次 API 调用
+        if (!user.twitterUserId && tweets.length > 0) {
+          await cacheTwitterUserId(user.username, user.id);
+        }
 
-      for (const tweet of tweets) {
-        const handled = await handleTweet(tweet, user.id, user.channelId ?? undefined, channelTopicId, user.displayName ?? undefined);
-        result.analyzed += handled.analyzed ? 1 : 0;
-        result.pushed += handled.pushed ? 1 : 0;
-        result.skipped += handled.skipped ? 1 : 0;
-      }
+        result.fetched += tweets.length;
 
-      const newest = tweets.at(-1);
-      if (newest) {
-        await prisma.watchUser.update({
-          where: { id: user.id },
-          data: { lastTweetId: newest.tweetId }
-        });
+        // 有新推文 → 恢复正常频率（账号重新活跃）
+        if (tweets.length > 0 && user.pollIntervalSeconds > DEFAULT_POLL_INTERVAL_SECONDS) {
+          await prisma.watchUser.update({
+            where: { id: user.id },
+            data: { pollIntervalSeconds: DEFAULT_POLL_INTERVAL_SECONDS }
+          });
+          logger.info({ username: user.username, restored: DEFAULT_POLL_INTERVAL_SECONDS }, "poll interval restored");
+        }
+
+        // 获取该 WatchUser 对应频道的 wxpusherTopicId
+        const channelTopicId = user.channel?.wxpusherTopicId ?? null;
+
+        for (const tweet of tweets) {
+          const handled = await handleTweet(tweet, user.id, user.channelId ?? undefined, channelTopicId, user.displayName ?? undefined);
+          result.analyzed += handled.analyzed ? 1 : 0;
+          result.pushed += handled.pushed ? 1 : 0;
+          result.skipped += handled.skipped ? 1 : 0;
+        }
+
+        const newest = tweets.at(-1);
+        if (newest) {
+          await prisma.watchUser.update({
+            where: { id: user.id },
+            data: { lastTweetId: newest.tweetId }
+          });
+        }
       }
     }
 
@@ -115,10 +122,8 @@ export async function runSerenityPipeline(): Promise<PipelineResult> {
       await syncWxPusherSubscribers();
     }
 
-    // ── 安全网2：处理卡住的历史发送任务（仅在有新推文时才可能产生新的卡住任务）──
-    if (result.fetched > 0) {
-      await retryPendingHistoryJobs();
-    }
+    // ── 安全网2：处理卡住的历史发送任务 ─────────────────────────────────────────
+    await retryPendingHistoryJobs();
 
     await prisma.cronRun.update({
       where: { id: cronRun.id },

@@ -21,6 +21,8 @@ const envSchema = z.object({
   TWITTER_USERNAME: z.string().default("serenity"),
   TWITTER_INCLUDE_REPLIES: z.coerce.boolean().default(false),
   TWITTER_INCLUDE_RETWEETS: z.coerce.boolean().default(false),
+  // When true, cron skips REST timeline polling — stream daemon handles ingestion instead
+  TWITTER_STREAM_ENABLED: z.coerce.boolean().default(false),
 
   // ─── Stock Data ──────────────────────────────────────────────────────────────
   FINNHUB_API_KEY: z.string().optional(),

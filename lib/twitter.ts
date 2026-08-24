@@ -2,6 +2,84 @@ import { env } from "@/lib/env";
 import { fetchJson } from "@/lib/http";
 import type { TweetInput } from "@/types";
 
+// ─── Stream event parsing ─────────────────────────────────────────────────────
+
+export type StreamEventParseResult = {
+  tweet: TweetInput;
+  authorUsername: string;
+  isRetweet: boolean;
+};
+
+/**
+ * Parses a raw X Filtered Stream event object into a TweetInput.
+ * Returns null if the event is a heartbeat, non-tweet, or missing required fields.
+ */
+export function parseStreamEvent(raw: unknown): StreamEventParseResult | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const event = raw as {
+    data?: {
+      id?: string;
+      text?: string;
+      created_at?: string;
+      referenced_tweets?: Array<{ type: string; id: string }>;
+      attachments?: { media_keys?: string[] };
+      entities?: { urls?: UrlEntity[] };
+      note_tweet?: { text?: string; entities?: { urls?: UrlEntity[] } };
+    };
+    includes?: {
+      users?: Array<{ id?: string; username?: string; name?: string }>;
+      media?: Array<{
+        media_key?: string;
+        type?: string;
+        url?: string;
+        preview_image_url?: string;
+      }>;
+    };
+  };
+
+  if (!event.data?.id || !event.data?.text) return null;
+
+  const authorUser = event.includes?.users?.[0];
+  if (!authorUser?.username) return null;
+
+  const isRetweet =
+    event.data.referenced_tweets?.some((r) => r.type === "retweeted") ?? false;
+
+  const mediaMap = new Map<string, string>();
+  for (const m of event.includes?.media ?? []) {
+    const imgUrl = m.url ?? m.preview_image_url;
+    if (m.media_key && imgUrl) mediaMap.set(m.media_key, imgUrl);
+  }
+
+  const imageUrls = (event.data.attachments?.media_keys ?? [])
+    .map((k) => mediaMap.get(k))
+    .filter((u): u is string => !!u);
+
+  const rawText = event.data.note_tweet?.text ?? event.data.text;
+  const urlEntities =
+    event.data.note_tweet?.entities?.urls ??
+    event.data.entities?.urls ??
+    [];
+  const content = cleanTweetText(rawText, urlEntities);
+
+  const tweetId = event.data.id;
+  const authorUsername = authorUser.username;
+
+  return {
+    tweet: {
+      tweetId,
+      authorUsername,
+      content,
+      tweetCreatedAt: new Date(event.data.created_at ?? Date.now()),
+      sourceUrl: `https://x.com/${authorUsername}/status/${tweetId}`,
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+    },
+    authorUsername,
+    isRetweet,
+  };
+}
+
 type TwitterUserResponse = {
   data?: { id: string; username: string; name: string };
 };
@@ -54,7 +132,7 @@ type TwitterTweetsResponse = {
  * 会连这些被误判的股票代码本身也一起删掉（推文原文里这种代码并没有 $ 前缀）。
  * 所以必须依赖 entities.urls 里的 display_url 做精确替换，而不是粗暴删除。
  */
-function cleanTweetText(text: string, urls: UrlEntity[] = []): string {
+export function cleanTweetText(text: string, urls: UrlEntity[] = []): string {
   let result = text;
 
   for (const u of urls) {
