@@ -19,7 +19,6 @@
  *   5. Re-sync rules every 5 minutes in case WatchUsers changed
  */
 
-import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { syncStreamRules } from "@/lib/stream-rules";
 
