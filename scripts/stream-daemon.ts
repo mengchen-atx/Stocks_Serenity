@@ -188,6 +188,10 @@ async function runStreamLoop(): Promise<void> {
           // Rate limited — jump to max backoff
           console.error(`[daemon] Rate limited (429) — backing off ${MAX_BACKOFF_MS / 1000}s`);
           attempt = Math.ceil(Math.log2(MAX_BACKOFF_MS / MIN_BACKOFF_MS)) + 1;
+        } else if (res.status === 402) {
+          // Credits depleted — no point retrying, billing issue must be resolved manually
+          console.error(`[daemon] 402 Credits Depleted — X API account has no credits. Recharge at https://developer.twitter.com. Body: ${text}`);
+          process.exit(1);
         } else if (res.status === 403) {
           // Likely plan doesn't support Filtered Stream — exit rather than loop forever
           console.error(`[daemon] 403 Forbidden — check X API plan supports Filtered Stream. Body: ${text}`);
