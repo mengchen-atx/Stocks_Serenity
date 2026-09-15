@@ -21,6 +21,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { syncStreamRules } from "@/lib/stream-rules";
+import { sendWxPusherToUids } from "@/lib/wxpusher";
+import { getAdminUids } from "@/lib/admin";
 
 // ── Env validation ────────────────────────────────────────────────────────────
 
@@ -120,6 +122,31 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * 守护进程即将致命退出时，推送微信告警给管理员。
+ * 不能让 daemon 静默挂掉几天没人发现（历史教训：402 挂了 6 天没人知道）。
+ */
+async function alertAdminAndExit(reason: string, detail: string): Promise<never> {
+  console.error(`[daemon] FATAL: ${reason} — ${detail}`);
+  try {
+    const uids = getAdminUids();
+    const html = `
+      <div style="font-family:sans-serif;padding:16px;">
+        <div style="font-size:15px;font-weight:700;color:#dc2626;">🚨 X Stream Daemon 挂了</div>
+        <div style="margin-top:8px;font-size:13px;color:#374151;">${reason}</div>
+        <div style="margin-top:8px;font-size:12px;color:#6b7280;white-space:pre-wrap;">${detail.slice(0, 500)}</div>
+        <div style="margin-top:8px;font-size:12px;color:#94a3b8;">时间：${new Date().toISOString()}</div>
+      </div>`.trim();
+    await Promise.race([
+      sendWxPusherToUids(uids, html, `🚨 Daemon 挂了: ${reason}`),
+      sleep(5_000),
+    ]);
+  } catch (err) {
+    console.error("[daemon] Failed to send admin alert:", err instanceof Error ? err.message : String(err));
+  }
+  process.exit(1);
+}
+
 // ── Main stream loop ──────────────────────────────────────────────────────────
 
 async function runStreamLoop(): Promise<void> {
@@ -190,12 +217,16 @@ async function runStreamLoop(): Promise<void> {
           attempt = Math.ceil(Math.log2(MAX_BACKOFF_MS / MIN_BACKOFF_MS)) + 1;
         } else if (res.status === 402) {
           // Credits depleted — no point retrying, billing issue must be resolved manually
-          console.error(`[daemon] 402 Credits Depleted — X API account has no credits. Recharge at https://developer.twitter.com. Body: ${text}`);
-          process.exit(1);
+          await alertAdminAndExit(
+            "402 Credits Depleted",
+            `X API account has no credits. Recharge at https://developer.twitter.com. Body: ${text}`
+          );
         } else if (res.status === 403) {
           // Likely plan doesn't support Filtered Stream — exit rather than loop forever
-          console.error(`[daemon] 403 Forbidden — check X API plan supports Filtered Stream. Body: ${text}`);
-          process.exit(1);
+          await alertAdminAndExit(
+            "403 Forbidden",
+            `Check X API plan supports Filtered Stream. Body: ${text}`
+          );
         } else {
           console.error(`[daemon] Stream HTTP ${res.status}: ${text.slice(0, 300)}`);
           attempt++;
