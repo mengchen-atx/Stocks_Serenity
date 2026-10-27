@@ -11,7 +11,7 @@ const envSchema = z.object({
   // ─── 聊天对话（Xiaomi MiMo，供用户交互使用，符合小米套餐条款）──────────
   XIAOMI_API_KEY: z.string().optional(),
   XIAOMI_BASE_URL: z.string().url().optional(),
-  XIAOMI_CHAT_MODEL: z.string().default("mimo-v2.5"),
+  XIAOMI_CHAT_MODEL: z.string().default("mimo-v2.6-pro"),
 
   // ─── Gemini ──────────────────────────────────────────────────────────────────
   GEMINI_API_KEY: z.string().optional(),

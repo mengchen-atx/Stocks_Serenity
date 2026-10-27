@@ -130,7 +130,7 @@ export async function analyzeTweetWithAi(content: string): Promise<AiAnalysis> {
     try {
       return await Promise.any([
         analyzeWithOpenAI(content).then(r => { console.log("[ai] primary (DeepSeek) won the race"); return r; }),
-        analyzeWithXiaomi(content).then(r => { console.log("[ai] backup (Xiaomi mimo-v2.5) won the race"); return r; })
+        analyzeWithXiaomi(content).then(r => { console.log(`[ai] backup (Xiaomi ${env.XIAOMI_CHAT_MODEL}) won the race`); return r; })
       ]);
     } catch (aggErr) {
       // Both failed — log both errors and throw
@@ -211,7 +211,7 @@ async function analyzeWithXiaomi(content: string): Promise<AiAnalysis> {
 
   const client = new OpenAI({ apiKey: env.XIAOMI_API_KEY, baseURL: env.XIAOMI_BASE_URL });
   const completion = await client.chat.completions.create({
-    model: "mimo-v2.5",
+    model: env.XIAOMI_CHAT_MODEL,
     temperature: 0.1,
     response_format: { type: "json_object" },
     messages: [
