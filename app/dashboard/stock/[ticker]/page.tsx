@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { getSessionUid } from "@/lib/wxpusher-auth";
+import { isGuestUid, guestContentCutoff } from "@/lib/guest";
 import { prisma } from "@/lib/prisma";
 import { generateStockProfile, SUPPLY_CHAIN, type StockAiProfile } from "@/lib/stock-profile";
 import { fetchEarnings } from "@/lib/earnings";
@@ -63,8 +64,11 @@ export default async function StockDetailPage({
   const stock = await prisma.stock.findUnique({ where: { ticker: upperTicker } });
   if (!stock) notFound();
 
+  const isGuest = isGuestUid(uid);
   const mentions = await prisma.stockMention.findMany({
-    where: { stock: { ticker: upperTicker } },
+    where: isGuest
+      ? { stock: { ticker: upperTicker }, tweet: { tweetCreatedAt: { lt: guestContentCutoff() } } }
+      : { stock: { ticker: upperTicker } },
     include: {
       tweet: {
         select: {
@@ -88,6 +92,7 @@ export default async function StockDetailPage({
         profile = stock.aiProfile as StockAiProfile;
         return;
       }
+      if (isGuest) return;
       const reasons = mentions.map((m) => m.reason).filter(Boolean) as string[];
       try {
         profile = await generateStockProfile(upperTicker, stock.companyName, reasons);

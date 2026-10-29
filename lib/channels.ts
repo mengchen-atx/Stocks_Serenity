@@ -3,6 +3,7 @@
  * 提供「当前用户能访问哪些频道」「某频道某用户有没有权限」等工具函数
  */
 import { prisma } from "@/lib/prisma";
+import { isGuestUid } from "@/lib/guest";
 
 export type ChannelInfo = {
   id: string;
@@ -14,6 +15,7 @@ export type ChannelInfo = {
 
 /** 获取指定 UID 有权访问的所有频道（过滤已过期），按创建时间排序 */
 export async function getUserChannels(uid: string): Promise<ChannelInfo[]> {
+  if (isGuestUid(uid)) return getAllChannels();
   const now = new Date();
   const accesses = await prisma.userChannelAccess.findMany({
     where: {
@@ -40,6 +42,10 @@ export async function checkChannelAccess(
   uid: string,
   channelSlug: string
 ): Promise<ChannelInfo | null> {
+  if (isGuestUid(uid)) {
+    const all = await getAllChannels();
+    return all.find((c) => c.slug === channelSlug) ?? null;
+  }
   const now = new Date();
   const access = await prisma.userChannelAccess.findFirst({
     where: {

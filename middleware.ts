@@ -87,7 +87,7 @@ function extractUidFromCookie(cookieValue: string): string | null {
     // cookie 格式：base64url(uid|expiresMs|hmac)
     const raw = Buffer.from(cookieValue, "base64url").toString("utf-8");
     const uid = raw.split("|")[0];
-    return uid?.startsWith("UID_") || uid?.startsWith("PWD_") ? uid : null;
+    return uid?.startsWith("UID_") || uid?.startsWith("PWD_") || uid?.startsWith("GUEST_") ? uid : null;
   } catch {
     return null;
   }

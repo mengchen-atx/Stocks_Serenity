@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { getAllMentionedStocks, isLikelyAShare } from "@/lib/insights";
 import { getAllChannels, checkChannelAccess } from "@/lib/channels";
 import { isAdminUid } from "@/lib/admin";
+import { isGuestUid, guestContentCutoff } from "@/lib/guest";
 import { fetchTopicSubscribersWithExpiry } from "@/lib/wxpusher";
 import { SubscriptionInfoButton } from "./subscription-info-button";
 import type { ChannelAccessInfo } from "./subscription-info-button";
@@ -19,11 +20,14 @@ const FEED_LIMIT = 20;
 
 // 推文列表按频道+页码缓存 60 秒，所有用户共享同一份数据
 const getChannelFeedCached = unstable_cache(
-  async (channelId: string, page: number) => {
+  async (channelId: string, page: number, beforeIso: string | null) => {
     const skip = (page - 1) * FEED_LIMIT;
+    const where = beforeIso
+      ? { channelId, tweetCreatedAt: { lt: new Date(beforeIso) } }
+      : { channelId };
     const [tweets, totalCount, topMentions] = await Promise.all([
       prisma.tweet.findMany({
-        where: { channelId },
+        where,
         orderBy: { tweetCreatedAt: "desc" },
         take: FEED_LIMIT,
         skip,
@@ -33,7 +37,7 @@ const getChannelFeedCached = unstable_cache(
           },
         },
       }).catch(() => []),
-      prisma.tweet.count({ where: { channelId } }).catch(() => 0),
+      prisma.tweet.count({ where }).catch(() => 0),
       getAllMentionedStocks(30, 9999, channelId).catch(() => []),
     ]);
     return { tweets, totalCount, topMentions };
@@ -128,7 +132,10 @@ export default async function ChannelDashboardPage({
     },
     select: { channel: { select: { slug: true } } },
   });
-  const mySlugs = new Set(myAccesses.map((a) => a.channel.slug));
+  const isGuest = isGuestUid(uid);
+  const mySlugs = new Set(
+    isGuest ? allChannels.map((c) => c.slug) : myAccesses.map((a) => a.channel.slug)
+  );
 
   // 无权限 → 显示锁定页（共享 header + tab 栏）
   if (!channel) {
@@ -261,7 +268,11 @@ export default async function ChannelDashboardPage({
       })
   );
 
-  const { tweets, totalCount, topMentions } = await getChannelFeedCached(channel.id, currentPage);
+  const { tweets, totalCount, topMentions } = await getChannelFeedCached(
+    channel.id,
+    currentPage,
+    isGuest ? guestContentCutoff().toISOString() : null
+  );
   const total = totalCount;
   const totalPages = Math.ceil(total / FEED_LIMIT);
   const aShareMentions = topMentions.filter((m) => isLikelyAShare(m.ticker, m.exchange));
@@ -314,9 +325,11 @@ export default async function ChannelDashboardPage({
               >
                 ⬡ Supply Chain
               </Link>
-              <div className="hidden sm:block">
-                <SubscriptionInfoButton accesses={accessInfoList} />
-              </div>
+              {!isGuest && (
+                <div className="hidden sm:block">
+                  <SubscriptionInfoButton accesses={accessInfoList} />
+                </div>
+              )}
               {isAdminUid(uid) && (
                 <Link
                   href="/ops"
@@ -357,9 +370,11 @@ export default async function ChannelDashboardPage({
             >
               ⬡ Supply Chain
             </Link>
-            <div className="flex-shrink-0">
-              <SubscriptionInfoButton accesses={accessInfoList} mobile />
-            </div>
+            {!isGuest && (
+              <div className="flex-shrink-0">
+                <SubscriptionInfoButton accesses={accessInfoList} mobile />
+              </div>
+            )}
             {isAdminUid(uid) && (
               <Link
                 href="/ops"
@@ -402,6 +417,18 @@ export default async function ChannelDashboardPage({
           )}
         </div>
       </header>
+
+      {isGuest && (
+        <div className="border-b border-teal-500/20 bg-teal-500/[0.06]">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-xs text-teal-200/80">
+            <span className="rounded-full border border-teal-400/30 px-2 py-0.5 font-semibold text-teal-300">
+              游客模式 · Guest
+            </span>
+            <span>只读预览，内容延迟 24 小时；实时推送与 AI 对话为订阅功能。</span>
+            <span className="text-teal-200/50">订阅请联系 Wx：PM112629</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Body ── */}
       <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">

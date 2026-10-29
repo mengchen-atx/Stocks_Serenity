@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import OpenAI from "openai";
 import { env } from "@/lib/env";
 import { getSessionUid } from "@/lib/wxpusher-auth";
+import { isGuestUid } from "@/lib/guest";
 import { checkChannelAccess } from "@/lib/channels";
 import { SERENITY_SKILL_SYSTEM_PROMPT } from "@/lib/serenity-skill-prompt";
 
@@ -22,6 +23,12 @@ function unauthorized() {
 export async function POST(req: NextRequest) {
   const uid = await getSessionUid();
   if (!uid) return unauthorized();
+  if (isGuestUid(uid)) {
+    return new Response(
+      JSON.stringify({ error: "游客模式不含 AI 对话，订阅后即可使用。订阅请联系 Wx：PM112629" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   const access = await checkChannelAccess(uid, "serenity");
   if (!access) return unauthorized();

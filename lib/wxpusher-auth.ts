@@ -169,12 +169,12 @@ export type CookieOptions = {
  * 返回 session cookie 的 name / value / options，
  * 供调用方直接设到 NextResponse 上（兼容移动端 Safari）。
  */
-export function buildSessionCookie(uid: string): {
+export function buildSessionCookie(uid: string, days: number = SESSION_DAYS): {
   name: string;
   value: string;
   options: CookieOptions;
 } {
-  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   return {
     name: COOKIE_NAME,
     value: encodeCookie(uid, expiresAt),

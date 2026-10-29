@@ -73,3 +73,24 @@ body {
   background: #f8fafc;
   color: #0f172a;
 }
+
+/* ── 登录页 ───────────────────────────────────────────────────────────── */
+.login-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 30% 40%, #000 40%, transparent 100%);
+}
+
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-rise { animation: login-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.login-rise-delay { animation-delay: 0.12s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-rise { animation: none; }
+}

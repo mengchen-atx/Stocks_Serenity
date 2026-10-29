@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -12,6 +13,7 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export function ChatWidget() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [showHint, setShowHint] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -125,6 +127,8 @@ export function ChatWidget() {
       send(input);
     }
   };
+
+  if (pathname?.startsWith("/card") || pathname?.startsWith("/auth")) return null;
 
   return (
     <>

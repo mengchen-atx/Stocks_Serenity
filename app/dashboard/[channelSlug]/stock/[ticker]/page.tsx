@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { generateStockProfile, SUPPLY_CHAIN, type StockAiProfile } from "@/lib/stock-profile";
 import { fetchEarnings } from "@/lib/earnings";
 import { checkChannelAccess } from "@/lib/channels";
+import { isGuestUid, guestContentCutoff } from "@/lib/guest";
 import type { AiAnalysis } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -70,10 +71,13 @@ export default async function StockDetailPage({
   if (!stock) notFound();
 
   // 只查该频道下提及这只股票的 mentions
+  const isGuest = isGuestUid(uid);
   const mentions = await prisma.stockMention.findMany({
     where: {
       stock: { ticker: upperTicker },
-      tweet: { channelId: channel.id },
+      tweet: isGuest
+        ? { channelId: channel.id, tweetCreatedAt: { lt: guestContentCutoff() } }
+        : { channelId: channel.id },
     },
     include: {
       tweet: {
@@ -98,6 +102,7 @@ export default async function StockDetailPage({
         profile = stock.aiProfile as StockAiProfile;
         return;
       }
+      if (isGuest) return;
       const reasons = mentions.map((m) => m.reason).filter(Boolean) as string[];
       try {
         profile = await generateStockProfile(upperTicker, stock.companyName, reasons);
