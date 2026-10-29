@@ -1,126 +1,135 @@
 # Serenity Intelligence
 
-> **AI Infra Narrative Terminal** — 实时追踪 AI 投资 KOL 观点，AI 深度分析投资逻辑，自动映射受益股票，1 分钟内推送到微信、Telegram 和邮件。
+[![CI](https://github.com/mengchen-atx/Stocks_Serenity/actions/workflows/ci.yml/badge.svg)](https://github.com/mengchen-atx/Stocks_Serenity/actions/workflows/ci.yml)
+![Next.js 15](https://img.shields.io/badge/Next.js-15-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Prisma-336791)
 
-## 功能概览
+**Real-time AI investment intelligence.** Serenity follows 17 investment and AI-infrastructure voices on X. It analyzes each post with LLMs: translation, summary, and bullish/bearish ticker extraction. Results go to a web dashboard and to subscribers on WeChat, typically within a minute of the original post.
 
-| 功能 | 描述 |
-|------|------|
-| 🔍 实时监控 | 每分钟轮询 @serenity 推文，自动去重 |
-| 🧠 AI 分析 | GPT-4o / Claude 4 结合知识图谱，推导受益 ticker |
-| 📈 股票数据 | Finnhub + Alpha Vantage 实时价格、市值、行业 |
-| 🚀 多渠道推送 | 微信企业机器人 / Telegram / Email，<1 分钟 |
-| 💳 订阅收费 | Stripe 月费制，Free/Basic(¥39)/Pro(¥99)/Premium(¥199) |
-| 📊 Dashboard | 实时 Feed、股票热度榜、Narrative Tag Cloud |
+It is a live product with paying users. I designed, built, and operate it end to end.
 
-## 技术栈
+**🔗 Live: [alphaline.fit](https://www.alphaline.fit)** → click **“Explore as guest”** for a one-click, read-only demo (no sign-up).
 
-- **Frontend**: Next.js 15 / React 19 / TypeScript / TailwindCSS
-- **Backend**: Node.js / Prisma ORM / PostgreSQL
-- **AI**: OpenAI GPT-4o / Anthropic Claude 4
-- **Auth**: NextAuth.js (Google OAuth + Email Magic Link)
-- **Payment**: Stripe Subscription
-- **Push**: 企业微信 / Telegram Bot / Resend Email
-- **Deploy**: Vercel + Supabase/Railway
+![Dashboard](docs/images/dashboard.png)
 
-## 快速开始
+## At a glance
 
-### 1. 安装依赖
+| | |
+|---|---|
+| Sources tracked | 17 X accounts, one channel each |
+| Posts ingested and analyzed | 9,000+ since May 2026 (live counter on the login page) |
+| Tickers covered | 1,300+ |
+| Customers | 100+ paying subscribers to date |
+| LLM robustness suite | 152 / 152 cases passed across two rounds ([reports](docs/benchmarks/)) |
 
-```bash
-npm install
+## Architecture
+
+```mermaid
+flowchart LR
+    X[(X Filtered Stream)] -->|SSE| D[Stream daemon<br/>Railway · Docker]
+    D -->|POST /api/stream/ingest| P[Ingest pipeline<br/>Next.js on Vercel]
+    C[Cron · REST polling<br/>fallback mode] --> P
+    P -->|dedupe by tweet id + SHA-256| DB[(PostgreSQL<br/>Supabase · Prisma)]
+    P -->|Promise.any race| L1[DeepSeek]
+    P -->|Promise.any race| L2[Xiaomi MiMo]
+    P --> W[WxPusher → WeChat]
+    DB --> UI[Dashboard · Alpha Map<br/>Supply chain · AI chat]
+    F[Finnhub] --> UI
 ```
 
-### 2. 配置环境变量
+1. **Ingest.** A long-running daemon holds one connection to the X Filtered Stream and forwards each post to an authenticated ingest endpoint. A cron-driven REST poller with per-author adaptive intervals is kept as a fallback mode.
+2. **Analyze.** Two LLM providers race in parallel. The first valid, schema-conforming answer wins.
+3. **Store and fan out.** The analysis and ticker mentions are saved. Each channel's subscribers get a formatted WeChat message.
+4. **Read.** A server-rendered dashboard shows the feed, a 30-day ticker leaderboard, a D3 force-directed "Alpha Map", a supply-chain view, and a streaming research chat.
 
-```bash
-cp .env.example .env
-# 编辑 .env，至少配置 OPENAI_API_KEY、TWITTER_BEARER_TOKEN、DATABASE_URL
+## Engineering highlights
+
+**Resilient streaming ingestion** ([`scripts/stream-daemon.ts`](scripts/stream-daemon.ts))
+- Heartbeat watchdog: X sends a keep-alive every 20 s, and the daemon reconnects if nothing arrives for 40 s.
+- Exponential backoff from 1 s up to 5 min. Stream rules re-sync from the database every 5 min.
+- Fatal account errors, such as depleted API credits, stop the retry loop and alert the admin on WeChat instead of retrying forever.
+
+**Reliable structured output from LLMs** ([`lib/ai.ts`](lib/ai.ts), [`lib/ai-normalize.ts`](lib/ai-normalize.ts))
+- DeepSeek and Xiaomi MiMo run in parallel through `Promise.any`, so one provider's outage, quota, or malformed output doesn't block delivery.
+- Model output passes through several layers: a state-machine sanitizer escapes raw newlines and curly or full-width quotes inside JSON strings, then `jsonrepair`, then Zod validation and normalization (confidence scaling, ticker dedupe).
+- If every model fails, subscribers still get the original post rather than nothing.
+
+**Deduplication and push bookkeeping** ([`lib/pipeline.ts`](lib/pipeline.ts))
+- Posts are deduplicated by X id and by a SHA-256 hash of author + content, which catches re-posts and backfill overlap.
+- Every push is recorded per (post, channel, payload hash), so retries and backfills skip messages that were already sent.
+
+**Auth, access control, and abuse protection**
+- Stateless sessions are HMAC-SHA256 signed and compared in constant time ([`lib/session-token.ts`](lib/session-token.ts)).
+- Access is granted per channel with expiry dates, and synced from the WeChat subscription provider.
+- Guest mode for reviewers: read-only, all channels unlocked, content delayed by 24 h, and no paid LLM calls. The delay cutoff is floored to the hour so guests share one cache entry.
+- A sliding-window rate limiter on dashboard routes blocks scrapers ([`middleware.ts`](middleware.ts)).
+
+**Frontend**
+- Next.js 15 App Router with React Server Components, and `unstable_cache` for the expensive aggregate queries.
+- D3 force-directed graph with zoom and drag, a sticky sidebar layout, and a bilingual (EN / 中文) login page.
+
+## Screenshots
+
+| Alpha Map: ticker and narrative network | Ticker page: supply-chain position and earnings |
+|---|---|
+| ![Alpha Map](docs/images/alpha-map.png) | ![Ticker](docs/images/stock.png) |
+| **Supply-chain heat map** | **Login with guest mode** |
+| ![Supply chain](docs/images/supply-chain.png) | ![Login](docs/images/login.png) |
+
+## Tech stack
+
+**App:** Next.js 15, React 19, TypeScript, Tailwind CSS, D3
+**Data:** PostgreSQL (Supabase, pgbouncer), Prisma
+**AI:** DeepSeek and Xiaomi MiMo (OpenAI-compatible APIs), Zod, jsonrepair. Anthropic and Gemini adapters are also included.
+**Infra:** Vercel (web and API), Railway (stream daemon, Docker), GitHub Actions (CI)
+**Integrations:** X API v2, WxPusher (WeChat), Finnhub
+
+## Project structure
+
+```
+app/                 Next.js routes: dashboard, auth, guest demo, API handlers
+  api/stream/ingest  Authenticated endpoint the stream daemon posts to
+  api/cron           Scheduled polling, retries, and maintenance
+lib/                 Domain logic
+  pipeline.ts        Ingest → dedupe → analyze → store → push
+  ai.ts              Provider routing and the parallel model race
+  ai-normalize.ts    JSON extraction, repair, and validation of model output
+  channels.ts        Per-channel access control
+  session-token.ts   Signed session tokens
+prisma/              Schema and migrations
+scripts/             Stream daemon and operational scripts (see scripts/README.md)
+tests/               Vitest unit tests
+docs/benchmarks/     LLM robustness test reports
 ```
 
-### 3. 初始化数据库
+## Running locally
 
 ```bash
-npx prisma migrate dev --name init
+npm install --legacy-peer-deps
+cp .env.example .env.local        # fill in DATABASE_URL, OPENAI_API_KEY, TWITTER_BEARER_TOKEN, ...
+npm run prisma:migrate
+npm run dev                       # http://localhost:3000
+
+# Optional: run the real-time ingestion daemon
+npx tsx --env-file=.env.local scripts/stream-daemon.ts
 ```
 
-### 4. 启动开发服务器
+## Quality checks
 
 ```bash
-npm run dev
-# 访问 http://localhost:3000
+npm run lint
+npm run typecheck
+npm test                 # Vitest unit tests
+npm run test:coverage
 ```
+
+CI runs all of the above on every push and pull request.
+
+## Disclaimer
+
+For information and research only. Not investment advice.
 
 ---
 
-## 部署方案
-
-### 方案 A：Vercel + Supabase（推荐）
-
-1. 创建 [Supabase](https://supabase.com) 项目，复制 Pooler 连接字符串为 `DATABASE_URL`
-2. `vercel` 部署，在 Dashboard 配置所有环境变量
-3. `DATABASE_URL=... npx prisma migrate deploy` 初始化数据库
-4. vercel.json 已配置每分钟 Cron（需 Vercel Pro 计划）
-
-### 方案 B：Railway
-
-New Project → Deploy from GitHub Repo，添加 PostgreSQL，配置环境变量，自动识别 Dockerfile。
-
-### 方案 C：Docker 自托管
-
-```bash
-docker-compose up -d
-```
-
----
-
-## Stripe 配置
-
-1. 创建 3 个订阅产品（¥39/¥99/¥199/月）
-2. 复制 Price ID 到 `STRIPE_PRICE_BASIC/PRO/PREMIUM`
-3. 配置 Webhook → `https://your-domain.com/api/webhooks/stripe`
-   - 事件：`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
-4. 复制 Webhook Secret 到 `STRIPE_WEBHOOK_SECRET`
-
----
-
-## API 路由
-
-| 路由 | 方法 | 描述 |
-|------|------|------|
-| `/api/cron` | GET | 触发完整 Pipeline |
-| `/api/analyze` | POST | 分析单条推文 |
-| `/api/tweets` | GET | 获取推文列表（分页/筛选）|
-| `/api/subscription` | GET/POST | 订阅状态 / 创建 Checkout |
-| `/api/webhooks/stripe` | POST | Stripe Webhook |
-| `/api/push/telegram` | POST | 手动推送 Telegram |
-| `/api/auth/[...nextauth]` | GET/POST | NextAuth 认证 |
-
----
-
-## 目录结构
-
-```
-serenity/
-├── app/
-│   ├── page.tsx              # Landing page
-│   ├── pricing/page.tsx      # 订阅方案
-│   ├── dashboard/page.tsx    # 主 Dashboard
-│   ├── settings/page.tsx     # 账号设置
-│   └── api/                  # API Routes
-├── components/
-├── lib/
-│   ├── ai.ts                 # AI 分析（OpenAI/Anthropic）
-│   ├── knowledge-graph.ts    # AI Infra 知识图谱
-│   ├── pipeline.ts           # 主流程编排
-│   ├── stripe.ts             # Stripe 订阅
-│   ├── telegram.ts           # Telegram 推送
-│   ├── email.ts              # Email 推送（Resend）
-│   ├── twitter.ts            # Twitter API v2
-│   └── wechat.ts             # 微信推送
-└── prisma/schema.prisma      # 完整数据模型
-```
-
----
-
-MIT License © 2025 Serenity Intelligence
+[中文说明](README.zh-CN.md)
