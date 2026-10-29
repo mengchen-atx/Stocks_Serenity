@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { FormCopy } from "./i18n";
 
 type Tab = "wxpusher" | "password";
 
@@ -11,7 +12,7 @@ const inputClass =
 const primaryButtonClass =
   "w-full rounded-lg bg-slate-100 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40";
 
-export function LoginForm() {
+export function LoginForm({ copy }: { copy: FormCopy }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("wxpusher");
   const [uid, setUid] = useState("");
@@ -37,13 +38,13 @@ export function LoginForm() {
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setError(data.error ?? "登录失败，请稍后再试");
+        setError(copy.errorsByStatus?.[res.status] ?? data.error ?? copy.genericError);
         return;
       }
       setSuccess(true);
       router.push("/dashboard");
     } catch {
-      setError("网络错误，请检查网络后重试");
+      setError(copy.networkError);
     } finally {
       setLoading(false);
     }
@@ -56,7 +57,7 @@ export function LoginForm() {
     return (
       <div className="flex flex-col items-center gap-3 py-10" role="status">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400/30 border-t-teal-400" />
-        <p className="text-sm text-slate-300">登录成功，正在进入 Dashboard…</p>
+        <p className="text-sm text-slate-300">{copy.success}</p>
       </div>
     );
   }
@@ -66,8 +67,8 @@ export function LoginForm() {
       <div className="mb-5 grid grid-cols-2 rounded-lg border border-white/10 bg-white/[0.03] p-1 text-sm" role="tablist">
         {(
           [
-            ["wxpusher", "WxPusher UID"],
-            ["password", "账号密码"],
+            ["wxpusher", copy.tabUid],
+            ["password", copy.tabPassword],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -94,7 +95,7 @@ export function LoginForm() {
           className="space-y-3"
         >
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">WxPusher UID</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-400">{copy.tabUid}</span>
             <input
               type="text"
               value={uid}
@@ -105,10 +106,10 @@ export function LoginForm() {
               className={`${inputClass} font-mono`}
             />
           </label>
-          <p className="text-xs text-slate-500">在 WxPusher App「我的」页面可以找到你的 UID</p>
+          <p className="text-xs text-slate-500">{copy.uidHint}</p>
           {error && <p className="text-sm text-rose-400" role="alert">{error}</p>}
           <button type="submit" disabled={!canSubmitUid} className={primaryButtonClass}>
-            {loading ? "验证中…" : "登录"}
+            {loading ? copy.submitting : copy.submit}
           </button>
         </form>
       ) : (
@@ -120,30 +121,30 @@ export function LoginForm() {
           className="space-y-3"
         >
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">用户名</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-400">{copy.usernameLabel}</span>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="输入用户名"
+              placeholder={copy.usernamePlaceholder}
               autoComplete="username"
               className={inputClass}
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-400">密码</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-400">{copy.passwordLabel}</span>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="输入密码"
+              placeholder={copy.passwordPlaceholder}
               autoComplete="current-password"
               className={inputClass}
             />
           </label>
           {error && <p className="text-sm text-rose-400" role="alert">{error}</p>}
           <button type="submit" disabled={!canSubmitPassword} className={primaryButtonClass}>
-            {loading ? "验证中…" : "登录"}
+            {loading ? copy.submitting : copy.submit}
           </button>
         </form>
       )}

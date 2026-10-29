@@ -1,14 +1,22 @@
 import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { COPY, LANG_COOKIE, parseLang, type Lang } from "./i18n";
+import { LangToggle } from "./lang-toggle";
 import { LoginForm } from "./login-form";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "登录 · Serenity Intelligence",
-  description: "实时追踪 AI 投资 KOL，AI 深度解析，1 分钟内推送到微信。",
-};
+async function getLang(): Promise<Lang> {
+  const store = await cookies();
+  return parseLang(store.get(LANG_COOKIE)?.value);
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const copy = COPY[await getLang()];
+  return { title: copy.metaTitle, description: copy.metaDescription };
+}
 
 const getPlatformStats = unstable_cache(
   async () => {
@@ -22,13 +30,6 @@ const getPlatformStats = unstable_cache(
   ["login-platform-stats"],
   { revalidate: 600 }
 );
-
-const PIPELINE = [
-  { label: "X Filtered Stream", detail: "实时监听 KOL 推文" },
-  { label: "双模型并行分析", detail: "DeepSeek × MiMo，先返回者胜出" },
-  { label: "受益股映射", detail: "知识图谱匹配产业链标的" },
-  { label: "微信推送", detail: "从发推到送达 < 1 分钟" },
-];
 
 const STACK = ["Next.js 15", "TypeScript", "Prisma", "PostgreSQL", "Railway", "Vercel"];
 
@@ -53,10 +54,11 @@ function LogoMark() {
 }
 
 export default async function LoginPage() {
-  const stats = await getPlatformStats().catch(() => null);
+  const [lang, stats] = await Promise.all([getLang(), getPlatformStats().catch(() => null)]);
+  const copy = COPY[lang];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#05080f] text-slate-200">
+    <main lang={lang === "zh" ? "zh-CN" : "en"} className="relative flex min-h-screen flex-col overflow-hidden bg-[#05080f] text-slate-200">
       <div aria-hidden="true" className="login-grid pointer-events-none absolute inset-0" />
       <div
         aria-hidden="true"
@@ -67,7 +69,11 @@ export default async function LoginPage() {
         className="pointer-events-none absolute -bottom-48 right-0 h-[420px] w-[420px] rounded-full bg-sky-500/[0.07] blur-3xl"
       />
 
-      <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
+      <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
+        <LangToggle lang={lang} />
+      </div>
+
+      <div className="relative mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-4 pb-12 pt-20 sm:px-6 lg:py-12 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
         {/* ── Product story ── */}
         <section className="login-rise">
           <div className="hidden items-center gap-3 lg:flex">
@@ -82,17 +88,17 @@ export default async function LoginPage() {
             </span>
           </div>
 
-          <h1 className="text-3xl lg:mt-8 font-semibold leading-tight tracking-tight text-white sm:text-4xl lg:text-[44px]">
-            AI 投资情报终端
+          <h1 className="text-balance text-3xl lg:mt-8 font-semibold leading-tight tracking-tight text-white sm:text-4xl lg:text-[44px]">
+            {copy.headline}
             <span className="mt-3 block text-base font-normal leading-relaxed tracking-normal text-slate-400 sm:text-lg">
-              Real-time KOL signals, analyzed by AI, delivered to WeChat in under a minute.
+              {copy.subhead}
             </span>
           </h1>
 
           <ol className="mt-10 space-y-0">
-            {PIPELINE.map((step, i) => (
+            {copy.pipeline.map((step, i) => (
               <li key={step.label} className="relative flex gap-4 pb-5 last:pb-0">
-                {i < PIPELINE.length - 1 && (
+                {i < copy.pipeline.length - 1 && (
                   <span aria-hidden="true" className="absolute left-[11px] top-6 h-[calc(100%-12px)] w-px bg-gradient-to-b from-teal-400/40 to-white/5" />
                 )}
                 <span className="relative mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-teal-400/30 bg-[#05080f] font-mono text-[11px] text-teal-300">
@@ -110,9 +116,9 @@ export default async function LoginPage() {
             <dl className="mt-10 grid max-w-md grid-cols-3 divide-x divide-white/5 rounded-xl border border-white/5 bg-white/[0.02]">
               {(
                 [
-                  ["追踪博主", stats.sources],
-                  ["已分析推文", stats.signals],
-                  ["覆盖标的", stats.tickers],
+                  [copy.stats.sources, stats.sources],
+                  [copy.stats.signals, stats.signals],
+                  [copy.stats.tickers, stats.tickers],
                 ] as const
               ).map(([label, value]) => (
                 <div key={label} className="px-4 py-3">
@@ -142,15 +148,15 @@ export default async function LoginPage() {
                 <LogoMark />
                 <span className="text-sm font-semibold tracking-tight text-slate-100">Serenity Intelligence</span>
               </div>
-              <p className="mt-2 text-xs text-slate-400">AI 投资情报终端 · 实时 KOL 信号 → AI 解析 → 微信推送</p>
+              <p className="mt-2 text-xs text-slate-400">{copy.mobileTagline}</p>
             </div>
             <a
               href="/demo"
               className="group flex items-center justify-between rounded-xl border border-teal-400/30 bg-gradient-to-br from-teal-400/15 to-teal-400/[0.03] px-4 py-3.5 transition hover:border-teal-300/60 hover:from-teal-400/25"
             >
               <span>
-                <span className="block text-sm font-semibold text-teal-100">游客体验 · Explore as guest</span>
-                <span className="mt-0.5 block text-xs text-teal-200/60">无需注册，一键进入只读演示</span>
+                <span className="block text-sm font-semibold text-teal-100">{copy.guestTitle}</span>
+                <span className="mt-0.5 block text-xs text-teal-200/60">{copy.guestSubtitle}</span>
               </span>
               <svg viewBox="0 0 20 20" className="h-5 w-5 flex-shrink-0 text-teal-300 transition group-hover:translate-x-0.5" aria-hidden="true">
                 <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -159,18 +165,20 @@ export default async function LoginPage() {
 
             <div className="my-6 flex items-center gap-3 text-[11px] text-slate-500">
               <span className="h-px flex-1 bg-white/10" />
-              订阅用户登录
+              {copy.divider}
               <span className="h-px flex-1 bg-white/10" />
             </div>
 
-            <LoginForm />
+            <LoginForm key={lang} copy={copy.form} />
 
-            <p className="mt-6 text-center text-xs text-slate-500">
-              7 天免重新验证 · 订阅请联系 Wx：<span className="select-all text-slate-400">PM112629</span>
+            <p className="mt-6 text-balance text-center text-xs text-slate-500">
+              {copy.footer} <span className="select-all text-slate-400">PM112629</span>
             </p>
           </div>
         </section>
       </div>
+
+      <p className="relative pb-6 text-center text-[11px] tracking-wide text-slate-600">{copy.disclaimer}</p>
     </main>
   );
 }
