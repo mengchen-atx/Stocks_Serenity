@@ -546,8 +546,8 @@ async function main() {
   console.log(`  DeepSeek 赢: ${raceWins["DeepSeek"] ?? 0} 次`);
   console.log(`  Xiaomi 赢:   ${raceWins["Xiaomi"] ?? 0} 次`);
 
-  fs.writeFileSync("stress-test-round2-report.json", JSON.stringify({ ts: new Date().toISOString(), total: CASES.length, passed, failed, raceWins, results }, null, 2));
-  console.log(`\n详细报告：stress-test-round2-report.json`);
+  fs.writeFileSync("docs/benchmarks/llm-robustness-round2.json", JSON.stringify({ ts: new Date().toISOString(), total: CASES.length, passed, failed, raceWins, results }, null, 2));
+  console.log(`\n详细报告：docs/benchmarks/llm-robustness-round2.json`);
 
   if (failed === 0) {
     console.log(`\n🎉 第二轮全部通过 — 两轮合计 ${72 + CASES.length} 个用例，error率 = 0%`);

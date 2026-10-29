@@ -335,8 +335,8 @@ async function main() {
 
   // 保存详细报告
   const report = { ts: new Date().toISOString(), total: CASES.length, passed, failed, raceWins, results };
-  fs.writeFileSync("stress-test-report.json", JSON.stringify(report, null, 2));
-  console.log(`\n详细报告已保存：stress-test-report.json`);
+  fs.writeFileSync("docs/benchmarks/llm-robustness-round1.json", JSON.stringify(report, null, 2));
+  console.log(`\n详细报告已保存：docs/benchmarks/llm-robustness-round1.json`);
 
   if (failed === 0) {
     console.log("\n🎉 全部通过 — error率 = 0%，任何格式推文均可正常推送");
