@@ -278,7 +278,7 @@ export default async function ChannelDashboardPage({
   const aShareMentions = topMentions.filter((m) => isLikelyAShare(m.ticker, m.exchange));
 
   return (
-    <div className="min-h-screen bg-[#070d1a] text-slate-200 overflow-x-hidden">
+    <div className="min-h-screen bg-[#070d1a] text-slate-200 overflow-x-clip">
 
       {/* ── Header ── */}
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#070d1a]/95 backdrop-blur-md">
@@ -582,11 +582,10 @@ export default async function ChannelDashboardPage({
                 </article>
               );
             })}
-          </div>
 
           {/* ── 翻页 ── */}
           {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-center gap-3">
+            <nav aria-label="分页" className="flex items-center justify-center gap-3 pt-3">
               {currentPage > 1 ? (
                 <Link
                   href={`/dashboard/${channelSlug}?page=${currentPage - 1}`}
@@ -616,11 +615,12 @@ export default async function ChannelDashboardPage({
                   下一页 →
                 </span>
               )}
-            </div>
+            </nav>
           )}
+          </div>
 
           {/* ── 侧边栏 ── */}
-          <div className="order-1 w-full space-y-4 lg:order-2 lg:w-72 lg:flex-shrink-0">
+          <div className="order-1 w-full space-y-4 lg:order-2 lg:sticky lg:top-32 lg:max-h-[calc(100vh-9rem)] lg:w-72 lg:flex-shrink-0 lg:overflow-y-auto scrollbar-none">
             <div className="rounded-xl border border-slate-800 bg-[#0d1628] p-4 shadow-xl">
               <div className="mb-3">
                 <div className="flex items-center gap-2">
@@ -638,7 +638,7 @@ export default async function ChannelDashboardPage({
                 <p className="text-xs italic text-slate-600">暂无数据</p>
               ) : (
                 <>
-                  <div className="max-h-64 space-y-1 overflow-y-auto pr-1 lg:max-h-[70vh]">
+                  <div className="max-h-64 space-y-1 overflow-y-auto pr-1 lg:max-h-[55vh]">
                     {topMentions.map((m, i) => (
                       <div key={m.ticker} className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-800/60">
                         <span className={`w-5 flex-shrink-0 text-center font-mono text-xs font-bold ${
