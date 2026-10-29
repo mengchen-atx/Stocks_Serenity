@@ -7,11 +7,12 @@
  * 3. Dashboard 从 cookie 解密出 UID → 校验付费状态
  */
 
-import { createHmac, randomInt } from "crypto";
+import { randomInt } from "crypto";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { isAdminUid } from "@/lib/admin";
+import { decodeSessionToken, encodeSessionToken } from "@/lib/session-token";
 
 const COOKIE_NAME = "wxpusher_session";
 const SESSION_DAYS = 7;
@@ -131,32 +132,6 @@ export async function checkWxPusherPayment(uid: string): Promise<{
 
 // ─── Session Cookie ───────────────────────────────────────────────────────────
 
-function sign(payload: string): string {
-  return createHmac("sha256", SECRET).update(payload).digest("hex");
-}
-
-function encodeCookie(uid: string, expiresAt: Date): string {
-  const payload = `${uid}|${expiresAt.getTime()}`;
-  const sig = sign(payload);
-  return Buffer.from(`${payload}|${sig}`).toString("base64url");
-}
-
-function decodeCookie(value: string): { uid: string; expiresAt: Date } | null {
-  try {
-    const raw = Buffer.from(value, "base64url").toString();
-    const parts = raw.split("|");
-    if (parts.length !== 3) return null;
-    const [uid, expMs, sig] = parts;
-    const payload = `${uid}|${expMs}`;
-    if (sign(payload) !== sig) return null;
-    const expiresAt = new Date(parseInt(expMs));
-    if (expiresAt < new Date()) return null;
-    return { uid, expiresAt };
-  } catch {
-    return null;
-  }
-}
-
 export type CookieOptions = {
   httpOnly: boolean;
   secure: boolean;
@@ -177,7 +152,7 @@ export function buildSessionCookie(uid: string, days: number = SESSION_DAYS): {
   const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   return {
     name: COOKIE_NAME,
-    value: encodeCookie(uid, expiresAt),
+    value: encodeSessionToken(uid, expiresAt, SECRET),
     options: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -206,6 +181,6 @@ export async function getSessionUid(): Promise<string | null> {
   const cookieStore = await cookies();
   const value = cookieStore.get(COOKIE_NAME)?.value;
   if (!value) return null;
-  const decoded = decodeCookie(value);
+  const decoded = decodeSessionToken(value, SECRET);
   return decoded?.uid ?? null;
 }
